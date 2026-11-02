@@ -1,0 +1,12 @@
+
+# Godot
+.godot/
+
+# Archivos temporales
+*.tmp
+*.bak
+*.log
+
+# Configuración personal de editores
+.vscode/
+.idea/

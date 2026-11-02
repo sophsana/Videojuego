@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://bae6mdkynk615"]
+
+[ext_resource type="Script" uid="uid://dcqpud8m6x7hk" path="res://script/player.gd" id="1_esbpa"]
+
+[node name="player" type="CharacterBody2D" unique_id=1004469140]
+script = ExtResource("1_esbpa")
+
+[node name="visual" type="Polygon2D" parent="." unique_id=1068141266]
+color = Color(1, 0, 1, 1)
+offset = Vector2(5, 5)
+polygon = PackedVector2Array(-5, -5, 5, -5, 5, 5, -5, 5)
+
+[node name="CollisionPolygon2D" type="CollisionPolygon2D" parent="." unique_id=1612917141]
+polygon = PackedVector2Array(-5, -5, 5, -5, 5, 5, -5, 5)
