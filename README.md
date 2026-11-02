@@ -23,7 +23,7 @@ las condiciones de uso y distribución.
 
 ## Autores
 
-Keiler Ferrer, Sofia Paiva
+Keiler Ferrer, Sofia Paiva, Andres Mancera
 
 ## Estado
 
