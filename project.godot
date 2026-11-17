@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="juego (pt1simuladormundo)"
-run/main_scene="uid://bd7npivbhaona"
+run/main_scene="res://escenas/interfaz/menu_principal.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
