@@ -42,6 +42,12 @@ func probar() -> void:
 	current_scene.semilla.text = "7654321"
 	current_scene._seleccionar_dificultad("Difícil")
 	current_scene._crear()
+	if await esperar_escena("res://escenas/interfaz/carga_mundo.tscn"):
+		var carga = current_scene
+		comprobar(carga.imagen.stretch_mode == TextureRect.STRETCH_KEEP_ASPECT_COVERED, "fondo de carga cubre la ventana")
+		comprobar(carga.capa_carga.layer > 0, "capa de carga por encima del mundo")
+	else:
+		comprobar(false, "pantalla de carga")
 	if not await esperar_escena("res://escenas/mundo.tscn"):
 		printerr("FALLO: el mundo no terminó de cargar")
 		quit(1)
@@ -49,6 +55,7 @@ func probar() -> void:
 	var mundo = current_scene
 	comprobar(mundo.world_seed == 7654321 and mundo.generacion_lista, "semilla y generación")
 	comprobar(not fondos.visible, "fondo oculto")
+	comprobar(mundo.get_node("Player/WorldCamera").is_current(), "cámara activa tras la transición")
 	var terreno: int = mundo.get_terrain(45, 27)
 	var id: String = gestor.mundo_actual.id
 	var jugador: CharacterBody2D = mundo.get_node("Player")

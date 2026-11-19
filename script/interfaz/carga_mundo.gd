@@ -13,15 +13,21 @@ var indice_barra := 0
 var indice_objetivo := 0
 var mundo: Node2D
 var cargando := true
+var capa_carga: CanvasLayer
 
 
 func _ready() -> void:
+	# La interfaz permanece por encima del mundo mientras este se presenta.
+	capa_carga = CanvasLayer.new()
+	capa_carga.layer = 100
+	add_child(capa_carga)
 	imagen = TextureRect.new()
 	imagen.texture = FONDO
 	imagen.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	imagen.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	imagen.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	imagen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(imagen)
+	imagen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	capa_carga.add_child(imagen)
 	var contenido := VBoxContainer.new()
 	contenido.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	contenido.anchor_top = 0.70
@@ -30,7 +36,7 @@ func _ready() -> void:
 	contenido.offset_right = 270
 	contenido.offset_bottom = 120
 	contenido.add_theme_constant_override("separation", 4)
-	add_child(contenido)
+	capa_carga.add_child(contenido)
 	barra = TextureRect.new()
 	barra.custom_minimum_size = Vector2(0, 70)
 	barra.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -105,11 +111,17 @@ func _terminar() -> void:
 	while indice_barra < indice_objetivo:
 		await get_tree().process_frame
 	await get_tree().process_frame
-	# Se conserva la instancia ya generada y se hace escena actual sin repetirla.
-	remove_child(mundo)
-	get_tree().root.add_child(mundo)
-	get_tree().current_scene = mundo
+	# El mundo no sale del árbol: su cámara y tiles ya preparados se mantienen.
+	# La capa de carga tapa la primera presentación del mundo para evitar destellos.
+	mundo.reparent(get_tree().root)
 	mundo.visible = true
+	var camara := mundo.get_node_or_null("Player/WorldCamera") as Camera2D
+	if camara != null:
+		camara.make_current()
+		camara.reset_smoothing()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	get_tree().current_scene = mundo
 	GestorFondos._actualizar_visibilidad()
 	mundo.activar_juego()
 	queue_free()
@@ -122,4 +134,4 @@ func _mostrar_error(texto: String) -> void:
 	volver.text = "Volver a selección"
 	volver.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	volver.pressed.connect(func(): get_tree().change_scene_to_file("res://escenas/interfaz/seleccion_mundos.tscn"))
-	add_child(volver)
+	capa_carga.add_child(volver)
