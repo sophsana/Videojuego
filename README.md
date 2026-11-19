@@ -48,6 +48,13 @@ recursos ni criaturas; todavía no hay inventario persistente. Existe un campo
 reservado para cambios futuros. La dificultad se guarda, pero sus ajustes son
 marcadores pendientes de balance y no modifican las mecánicas actuales.
 
+El mundo tiene 256 × 256 baldosas de 32 píxeles (8192 × 8192). Las partidas
+anteriores sin `tamano_tile` se interpretan como 16 píxeles y su posición se
+duplica al entrar, sin alterar el archivo hasta guardar. Los guardados antiguos
+con cambios de mundo no vacíos se conservan, pero no se migran automáticamente.
+El terreno lógico se reconstruye con la misma semilla; las posiciones de recursos
+procedurales pueden cambiar por la escala y los ajustes de superposición.
+
 La carga utiliza `ResourceLoader` asíncrono y genera nodos en el hilo principal
 por lotes. El porcentaje es una ponderación de trabajo completado, no tiempo
 estimado: recursos de escena 0–10 %, filas de terreno 10–40 %, copias del

@@ -5,10 +5,12 @@ signal avance_generacion(fase: String, completado: int, total: int)
 signal generacion_terminada
 signal generacion_fallida(mensaje: String)
 
-const MAP_SIZE: int = 256
-const TILE_SIZE: int = 16
-const WORLD_SIZE: float = MAP_SIZE * TILE_SIZE
+const Dimensiones = preload("res://script/sistemas/dimensiones_mundo.gd")
+const MAP_SIZE: int = Dimensiones.MAP_SIZE
+const TILE_SIZE: int = Dimensiones.TILE_SIZE
+const WORLD_SIZE: float = Dimensiones.WORLD_SIZE
 const TERRAIN_COUNT: int = 6
+const GRASS_VARIANTS: int = 4
 
 const DEEP_WATER: int = 0
 const WATER: int = 1
@@ -36,6 +38,7 @@ var occupied_positions: Array[Vector2] = []
 var forest_noise: FastNoiseLite
 var forest_detail_noise: FastNoiseLite
 var generacion_lista := false
+var tree_frame_size := Vector2i(32, 48)
 
 
 func _ready() -> void:
@@ -43,6 +46,7 @@ func _ready() -> void:
 	# directamente se conserva la semilla exportada de la escena.
 	if not GestorMundos.mundo_actual.is_empty():
 		world_seed = GestorMundos.mundo_actual.semilla
+	y_sort_enabled = true
 	setup_noise()
 	setup_terrain()
 	if terrain_layer == null:
@@ -115,9 +119,17 @@ func create_resource_copies() -> void:
 func generate_resources() -> void:
 	resources_layer = Node2D.new()
 	resources_layer.name = "Recursos"
+	resources_layer.y_sort_enabled = true
 	add_child(resources_layer)
 
 	resource_rng.seed = world_seed + 500
+	var escena_arbol := load("res://escenas/arbol_animado.tscn") as PackedScene
+	if escena_arbol != null:
+		var muestra := escena_arbol.instantiate()
+		var animado := muestra.get_node_or_null("SpriteNode2D") as AnimatedSprite2D
+		if animado != null and animado.sprite_frames != null:
+			tree_frame_size = Vector2i(animado.sprite_frames.get_frame_texture("viento", 0).get_size())
+		muestra.free()
 
 	occupied_positions.clear()
 
@@ -146,7 +158,7 @@ func generate_resources() -> void:
 						"arbol_1",
 						"res://assets/recursos/arbol_1.png",
 						tile_center,
-						Vector2i(192, 48),
+						tree_frame_size,
 						1.0
 					)
 				elif resource_rng.randf() < 0.10:
@@ -207,22 +219,15 @@ func place_resource(
 		push_warning("No se pudo cargar el recurso: " + texture_path)
 		return
 
-	if resource_name == "arbol_1":
-		if texture.get_width() != 192 or texture.get_height() != 48:
-			push_warning("La spritesheet del árbol debe medir 192 x 48.")
-			return
-	else:
+	if resource_name != "arbol_1":
 		if texture.get_width() != expected_size.x or texture.get_height() != expected_size.y:
 			push_warning("Tamaño incorrecto para: " + texture_path)
 			return
 	var sprite_position := tile_center
 
-	if resource_name == "arbol_1" or resource_name == "arbusto_1":
-		sprite_position.y -= expected_size.y / 2.0 - TILE_SIZE / 2.0
-
 	# Comprobar que el recurso no se superponga con otro.
 	var new_rect := Rect2(
-		sprite_position - Vector2(expected_size) / 2.0,
+		sprite_position - Vector2(expected_size.x / 2.0, expected_size.y),
 		Vector2(expected_size)
 	)
 
@@ -251,7 +256,7 @@ func place_resource(
 
 		var existing_size := existing_texture.get_size()
 		var existing_rect := Rect2(
-			existing.position - existing_size / 2.0,
+			existing.position - Vector2(existing_size.x / 2.0, existing_size.y),
 			existing_size
 		).grow(clearance * TILE_SIZE / 2.0)
 
@@ -280,16 +285,20 @@ func place_resource(
 			return
 
 		animated_sprite.play("viento")
+		# Se preserva la escena original; la instancia se alinea por su base.
+		animated_sprite.position = Vector2(0, -expected_size.y / 2.0)
 	else:
 		var static_sprite := Sprite2D.new()
 		static_sprite.texture = texture
 		static_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		sprite = static_sprite
+		static_sprite.position.y = -expected_size.y / 2.0
+		sprite = Node2D.new()
+		static_sprite.name = "SpriteNode2D"
+		sprite.add_child(static_sprite)
 
 	sprite.name = resource_name
 	sprite.position = sprite_position
-	sprite.z_as_relative = false
-	sprite.z_index = roundi(sprite_position.y)
+	sprite.z_index = 0
 
 	resources_layer.add_child(sprite)
 	occupied_positions.append(tile_center)
@@ -376,13 +385,13 @@ func setup_terrain() -> void:
 		"res://assets/terreno/agua_nivel_2.png",
 		"res://assets/terreno/agua_nivel_1.png",
 		"res://assets/terreno/arena_1.png",
-		"res://assets/terreno/tierra_1.png",
+		"res://assets/terreno/pasto_1.png",
 		"res://assets/terreno/tierra_1.png",
 		"res://assets/terreno/roca_1.png"
 	]
 
 	var atlas_image := Image.create(
-		TILE_SIZE * TERRAIN_COUNT,
+		TILE_SIZE * (TERRAIN_COUNT + GRASS_VARIANTS - 1),
 		TILE_SIZE,
 		false,
 		Image.FORMAT_RGBA8
@@ -397,15 +406,30 @@ func setup_terrain() -> void:
 
 		var tile_image := texture.get_image()
 
-		if tile_image.get_width() != TILE_SIZE or tile_image.get_height() != TILE_SIZE:
-			push_error("La textura debe medir 16 x 16: " + tile_paths[tile_id])
-			return
+		tile_image.resize(TILE_SIZE, TILE_SIZE, Image.INTERPOLATE_NEAREST)
+		tile_image.convert(Image.FORMAT_RGBA8)
+		if tile_id == GRASS:
+			var base_texture := load("res://assets/terreno/tierra_1.png") as Texture2D
+			var base := base_texture.get_image()
+			base.resize(TILE_SIZE, TILE_SIZE, Image.INTERPOLATE_NEAREST)
+			base.convert(Image.FORMAT_RGBA8)
+			base.blend_rect(tile_image, Rect2i(0, 0, TILE_SIZE, TILE_SIZE), Vector2i.ZERO)
+			tile_image = base
 
 		atlas_image.blit_rect(
 			tile_image,
 			Rect2i(0, 0, TILE_SIZE, TILE_SIZE),
 			Vector2i(tile_id * TILE_SIZE, 0)
 		)
+		if tile_id == GRASS:
+			# Variaciones mediante reflejos de la misma textura de suelo.
+			for variante in range(1, GRASS_VARIANTS):
+				var variacion := tile_image.duplicate() as Image
+				if variante & 1:
+					variacion.flip_x()
+				if variante & 2:
+					variacion.flip_y()
+				atlas_image.blit_rect(variacion, Rect2i(0, 0, TILE_SIZE, TILE_SIZE), Vector2i((TERRAIN_COUNT + variante - 1) * TILE_SIZE, 0))
 
 	var atlas_texture := ImageTexture.create_from_image(atlas_image)
 
@@ -413,7 +437,7 @@ func setup_terrain() -> void:
 	atlas_source.texture = atlas_texture
 	atlas_source.texture_region_size = Vector2i(TILE_SIZE, TILE_SIZE)
 
-	for tile_id in range(TERRAIN_COUNT):
+	for tile_id in range(TERRAIN_COUNT + GRASS_VARIANTS - 1):
 		atlas_source.create_tile(Vector2i(tile_id, 0))
 
 	var tile_set := TileSet.new()
@@ -433,10 +457,15 @@ func generate_world() -> void:
 		for x in range(MAP_SIZE):
 			var terrain_id := get_terrain(x, y)
 
+			var atlas_id := terrain_id
+			if terrain_id == GRASS:
+				var variante := posmod(hash(Vector3i(x, y, world_seed)), GRASS_VARIANTS)
+				if variante > 0:
+					atlas_id = TERRAIN_COUNT + variante - 1
 			terrain_layer.set_cell(
 				Vector2i(x, y),
 				0,
-				Vector2i(terrain_id, 0)
+				Vector2i(atlas_id, 0)
 			)
 		if y % 4 == 3:
 			avance_generacion.emit("terreno", y + 1, MAP_SIZE)
@@ -499,7 +528,8 @@ func create_player() -> void:
 	var datos_jugador: Dictionary = progreso.get("jugador", {})
 	if datos_jugador.has("posicion"):
 		var posicion: Dictionary = datos_jugador.posicion
-		player.position = Vector2(posicion.x, posicion.y)
+		var tamano_anterior: int = int(GestorMundos.mundo_actual.get("tamano_tile", Dimensiones.TILE_SIZE_ANTERIOR))
+		player.position = Vector2(posicion.x, posicion.y) * (float(TILE_SIZE) / tamano_anterior)
 
 	add_child(player)
 	player.set_physics_process(false)

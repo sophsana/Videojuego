@@ -1,6 +1,7 @@
 extends Node
 
 const DatosMundo = preload("res://script/sistemas/datos_mundo.gd")
+const Dimensiones = preload("res://script/sistemas/dimensiones_mundo.gd")
 const DIRECTORIO := "user://mundos"
 const ESCENA_MUNDO := "res://escenas/mundo.tscn"
 const ESCENA_CARGA := "res://escenas/interfaz/carga_mundo.tscn"
@@ -75,7 +76,7 @@ func crear_mundo(nombre: String, semilla: int, dificultad: String) -> Dictionary
 	if id.is_empty():
 		ultimo_error = "No se pudo asignar un identificador único."
 		return {}
-	var datos := {"id": id, "nombre": nombre, "semilla": semilla, "dificultad": dificultad, "fecha_creacion": Time.get_datetime_string_from_system(), "fecha_ultimo_guardado": "", "progreso": {"jugador": {}, "cambios_mundo": {}}}
+	var datos := {"id": id, "nombre": nombre, "semilla": semilla, "dificultad": dificultad, "fecha_creacion": Time.get_datetime_string_from_system(), "fecha_ultimo_guardado": "", "tamano_tile": Dimensiones.TILE_SIZE, "progreso": {"jugador": {}, "cambios_mundo": {}}}
 	var ruta := DIRECTORIO.path_join(id + ".json")
 	var archivo := FileAccess.open(ruta, FileAccess.WRITE)
 	if archivo == null:
@@ -96,6 +97,9 @@ func crear_mundo(nombre: String, semilla: int, dificultad: String) -> Dictionary
 
 
 func iniciar_mundo(datos: Dictionary) -> Error:
+	if datos.get("tamano_tile", Dimensiones.TILE_SIZE_ANTERIOR) == Dimensiones.TILE_SIZE_ANTERIOR and not datos.get("progreso", {}).get("cambios_mundo", {}).is_empty():
+		ultimo_error = "Este mundo antiguo contiene cambios que no se pueden migrar automáticamente."
+		return ERR_INVALID_DATA
 	mundo_actual = datos.duplicate(true)
 	var error := get_tree().change_scene_to_file(ESCENA_CARGA)
 	if error != OK:
@@ -111,7 +115,7 @@ func guardar_progreso(posicion: Vector2) -> bool:
 		return false
 	var id: String = mundo_actual.id
 	# Nunca aceptar rutas, incluso si los datos en memoria fueron alterados.
-	if not _id_valido(id) or not is_finite(posicion.x) or not is_finite(posicion.y) or posicion.x < 0 or posicion.x >= 4096 or posicion.y < 0 or posicion.y >= 4096:
+	if not _id_valido(id) or not is_finite(posicion.x) or not is_finite(posicion.y) or posicion.x < 0 or posicion.x >= Dimensiones.WORLD_SIZE or posicion.y < 0 or posicion.y >= Dimensiones.WORLD_SIZE:
 		ultimo_error = "El identificador o la posición no son válidos."
 		return false
 	var ruta := DIRECTORIO.path_join(id + ".json")
@@ -125,6 +129,7 @@ func guardar_progreso(posicion: Vector2) -> bool:
 	if not progreso.has("cambios_mundo"):
 		progreso["cambios_mundo"] = {}
 	datos["progreso"] = progreso
+	datos["tamano_tile"] = Dimensiones.TILE_SIZE
 	datos["fecha_ultimo_guardado"] = Time.get_datetime_string_from_system()
 	# Archivo temporal independiente en el mismo directorio; el original no se
 	# toca hasta que se han escrito y validado todos los datos.
@@ -186,10 +191,16 @@ func _leer_mundo(ruta: String) -> Dictionary:
 	var jugador = progreso.get("jugador", {})
 	if not jugador is Dictionary or not progreso.get("cambios_mundo", {}) is Dictionary:
 		return {}
+	var tamano = datos.get("tamano_tile", Dimensiones.TILE_SIZE_ANTERIOR)
+	if not (tamano is int or tamano is float) or (tamano != Dimensiones.TILE_SIZE_ANTERIOR and tamano != Dimensiones.TILE_SIZE):
+		return {}
+	if datos.has("tamano_tile"):
+		datos.tamano_tile = int(tamano)
 	if jugador.has("posicion"):
 		var posicion = jugador.posicion
 		if not posicion is Dictionary or not (posicion.get("x") is int or posicion.get("x") is float) or not (posicion.get("y") is int or posicion.get("y") is float):
 			return {}
-		if not is_finite(float(posicion.x)) or not is_finite(float(posicion.y)) or float(posicion.x) < 0 or float(posicion.x) >= 4096 or float(posicion.y) < 0 or float(posicion.y) >= 4096:
+		var limite: int = Dimensiones.MAP_SIZE * int(tamano)
+		if not is_finite(float(posicion.x)) or not is_finite(float(posicion.y)) or float(posicion.x) < 0 or float(posicion.x) >= limite or float(posicion.y) < 0 or float(posicion.y) >= limite:
 			return {}
 	return datos
