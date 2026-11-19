@@ -11,9 +11,14 @@ config_version=5
 [application]
 
 config/name="juego (pt1simuladormundo)"
-run/main_scene="uid://bd7npivbhaona"
+run/main_scene="res://escenas/interfaz/menu_principal.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
+
+[autoload]
+
+GestorMundos="*res://script/sistemas/gestor_mundos.gd"
+GestorFondos="*res://script/interfaz/gestor_fondos.gd"
 
 [display]
 
@@ -29,3 +34,7 @@ window/stretch/aspect="expand"
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+
+[gui]
+
+theme/custom="res://recursos_interfaz/tema.tres"

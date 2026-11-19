@@ -1,0 +1,101 @@
+[gd_scene load_steps=13 format=3 uid="uid://bvqk1yl6nlcak"]
+
+[ext_resource type="Script" path="res://script/interfaz/menu_principal.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://recursos_interfaz/botones/botones_group.png" id="3_botones"]
+[ext_resource type="Texture2D" path="res://recursos_interfaz/fondos/Titulo_juego.png" id="4_titulo"]
+
+[sub_resource type="AtlasTexture" id="JugarNormal"]
+atlas = ExtResource("3_botones")
+region = Rect2(0, 109, 360, 137)
+
+[sub_resource type="AtlasTexture" id="JugarHover"]
+atlas = ExtResource("3_botones")
+region = Rect2(0, 299, 360, 137)
+
+[sub_resource type="AtlasTexture" id="JugarPressed"]
+atlas = ExtResource("3_botones")
+region = Rect2(0, 489, 360, 137)
+
+[sub_resource type="AtlasTexture" id="OpcionesNormal"]
+atlas = ExtResource("3_botones")
+region = Rect2(360, 109, 360, 137)
+
+[sub_resource type="AtlasTexture" id="OpcionesHover"]
+atlas = ExtResource("3_botones")
+region = Rect2(360, 299, 360, 137)
+
+[sub_resource type="AtlasTexture" id="OpcionesPressed"]
+atlas = ExtResource("3_botones")
+region = Rect2(360, 489, 360, 137)
+
+[sub_resource type="AtlasTexture" id="SalirNormal"]
+atlas = ExtResource("3_botones")
+region = Rect2(720, 109, 360, 137)
+
+[sub_resource type="AtlasTexture" id="SalirHover"]
+atlas = ExtResource("3_botones")
+region = Rect2(720, 299, 360, 137)
+
+[sub_resource type="AtlasTexture" id="SalirPressed"]
+atlas = ExtResource("3_botones")
+region = Rect2(720, 489, 360, 137)
+
+[node name="MenuPrincipal" type="Control" unique_id=1984889271]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture_filter = 1
+script = ExtResource("1_script")
+
+[node name="Centro" type="CenterContainer" parent="." unique_id=950815639]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Contenido" type="VBoxContainer" parent="Centro" unique_id=707235843]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Titulo" type="TextureRect" parent="Centro/Contenido" unique_id=443391093]
+custom_minimum_size = Vector2(360, 120)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("4_titulo")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Jugar" type="TextureButton" parent="Centro/Contenido" unique_id=68068351]
+custom_minimum_size = Vector2(320, 122)
+layout_mode = 2
+size_flags_horizontal = 4
+texture_normal = SubResource("JugarNormal")
+texture_pressed = SubResource("JugarPressed")
+texture_hover = SubResource("JugarHover")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="Opciones" type="TextureButton" parent="Centro/Contenido" unique_id=1313383452]
+custom_minimum_size = Vector2(320, 122)
+layout_mode = 2
+size_flags_horizontal = 4
+texture_normal = SubResource("OpcionesNormal")
+texture_pressed = SubResource("OpcionesPressed")
+texture_hover = SubResource("OpcionesHover")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="Salir" type="TextureButton" parent="Centro/Contenido" unique_id=1769307869]
+custom_minimum_size = Vector2(320, 122)
+layout_mode = 2
+size_flags_horizontal = 4
+texture_normal = SubResource("SalirNormal")
+texture_pressed = SubResource("SalirPressed")
+texture_hover = SubResource("SalirHover")
+ignore_texture_size = true
+stretch_mode = 5

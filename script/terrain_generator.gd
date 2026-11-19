@@ -1,6 +1,10 @@
 
 extends Node2D
 
+signal avance_generacion(fase: String, completado: int, total: int)
+signal generacion_terminada
+signal generacion_fallida(mensaje: String)
+
 const MAP_SIZE: int = 256
 const TILE_SIZE: int = 16
 const WORLD_SIZE: float = MAP_SIZE * TILE_SIZE
@@ -31,17 +35,36 @@ var occupied_positions: Array[Vector2] = []
 #lo mismo pero para bosques
 var forest_noise: FastNoiseLite
 var forest_detail_noise: FastNoiseLite
+var generacion_lista := false
 
 
 func _ready() -> void:
+	# La configuración se selecciona antes del cambio de escena; al abrir mundo.tscn
+	# directamente se conserva la semilla exportada de la escena.
+	if not GestorMundos.mundo_actual.is_empty():
+		world_seed = GestorMundos.mundo_actual.semilla
 	setup_noise()
 	setup_terrain()
-	generate_world()
-	create_world_copies()
-	generate_resources()
-	create_resource_copies()
+	if terrain_layer == null:
+		push_error("No se pudo preparar el terreno.")
+		generacion_fallida.emit("No se pudo preparar el terreno.")
+		return
+	await generate_world()
+	await create_world_copies()
+	await generate_resources()
+	await create_resource_copies()
 	create_player()
+	if get_node_or_null("Player") == null:
+		push_error("No se pudo preparar el jugador.")
+		generacion_fallida.emit("No se pudo preparar el jugador.")
+		return
 	setup_camera()
+	_crear_interfaz_mundo()
+	generacion_lista = true
+	avance_generacion.emit("jugador", 1, 1)
+	generacion_terminada.emit()
+	if get_parent() == get_tree().root:
+		activar_juego()
 
 
 
@@ -57,6 +80,8 @@ func create_resource_copies() -> void:
 		if child is Node2D and not child.name.ends_with("_VisualCopy"):
 			original_resources.append(child as Node2D)
 
+	var total := original_resources.size() * 8
+	var completado := 0
 	for offset_y in [-1, 0, 1]:
 		for offset_x in [-1, 0, 1]:
 			if offset_x == 0 and offset_y == 0:
@@ -80,6 +105,12 @@ func create_resource_copies() -> void:
 				var animated := copy.get_node_or_null("SpriteNode2D") as AnimatedSprite2D
 				if animated != null:
 					animated.play("viento")
+				completado += 1
+				if completado % 100 == 0:
+					avance_generacion.emit("copias_recursos", completado, maxi(total, 1))
+					await get_tree().process_frame
+	avance_generacion.emit("copias_recursos", 1, 1)
+	await get_tree().process_frame
 
 func generate_resources() -> void:
 	resources_layer = Node2D.new()
@@ -136,6 +167,9 @@ func generate_resources() -> void:
 			elif terrain_id == ROCK:
 				if resource_rng.randf() < 0.08:
 					place_rock(tile_center)
+		if y % 4 == 3:
+			avance_generacion.emit("recursos", y + 1, MAP_SIZE)
+			await get_tree().process_frame
 
 func place_rock(tile_center: Vector2) -> void:
 	var chance := resource_rng.randf()
@@ -404,9 +438,13 @@ func generate_world() -> void:
 				0,
 				Vector2i(terrain_id, 0)
 			)
+		if y % 4 == 3:
+			avance_generacion.emit("terreno", y + 1, MAP_SIZE)
+			await get_tree().process_frame
 
 
 func create_world_copies() -> void:
+	var completado := 0
 	for offset_y in [-1, 0, 1]:
 		for offset_x in [-1, 0, 1]:
 			if offset_x == 0 and offset_y == 0:
@@ -419,6 +457,9 @@ func create_world_copies() -> void:
 				offset_y * WORLD_SIZE
 			)
 			add_child(copy)
+			completado += 1
+			avance_generacion.emit("copias_terreno", completado, 8)
+			await get_tree().process_frame
 
 
 
@@ -454,8 +495,28 @@ func create_player() -> void:
 	var player: CharacterBody2D = player_scene.instantiate()
 	player.name = "Player"
 	player.position = Vector2(WORLD_SIZE / 2.0, WORLD_SIZE / 2.0)
+	var progreso: Dictionary = GestorMundos.mundo_actual.get("progreso", {})
+	var datos_jugador: Dictionary = progreso.get("jugador", {})
+	if datos_jugador.has("posicion"):
+		var posicion: Dictionary = datos_jugador.posicion
+		player.position = Vector2(posicion.x, posicion.y)
 
 	add_child(player)
+	player.set_physics_process(false)
+
+
+func activar_juego() -> void:
+	if generacion_lista:
+		$Player.set_physics_process(true)
+		$InterfazMundo.visible = true
+
+
+func _crear_interfaz_mundo() -> void:
+	var interfaz := CanvasLayer.new()
+	interfaz.name = "InterfazMundo"
+	interfaz.visible = false
+	interfaz.set_script(load("res://script/interfaz/interfaz_mundo.gd"))
+	add_child(interfaz)
 
 #para bosques pt2
 func is_forest_zone(x: int, y: int) -> bool:
