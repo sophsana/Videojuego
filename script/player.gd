@@ -42,6 +42,7 @@ var tiempo_golpe: float = 0.0
 var enfriamiento_golpe: float = 0.0
 var offset_golpe: Vector2 = Vector2.ZERO
 var animacion_golpeando: bool = false
+var direccion_golpe_anim: String = "down"
 var sonido_pasos: AudioStreamPlayer
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 
@@ -65,11 +66,16 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if enfriamiento_golpe > 0.0:
 		enfriamiento_golpe = maxf(0.0, enfriamiento_golpe - delta)
-	if golpeando:
+	if golpeando or animacion_golpeando:
 		tiempo_golpe -= delta
-		if tiempo_golpe <= 0.0 and not animacion_golpeando:
+		if tiempo_golpe <= 0.0:
+			# Seguridad: evitar que la animación de golpe quede atascada.
+			animacion_golpeando = false
 			golpeando = false
 			offset_golpe = Vector2.ZERO
+			if sprite != null and String(sprite.animation).begins_with("hit_"):
+				sprite.stop()
+				sprite.frame = 0
 
 	if Input.is_action_just_pressed("golpear") and enfriamiento_golpe <= 0.0 and not golpeando and not animacion_golpeando:
 		_iniciar_golpe()
@@ -137,7 +143,8 @@ func _intentar_comer_seleccionado() -> bool:
 	var id := String(s.get("id", ""))
 	if id == "fruto_alienigena":
 		if hambre >= hambre_maxima:
-			return true
+			# Hambre llena: permitir recolectar/interactuar en lugar de bloquear.
+			return false
 		var consumido := false
 		if inv.has_method("quitar_en_slot"):
 			consumido = inv.quitar_en_slot(sel, 1)
@@ -202,14 +209,15 @@ func _direccion_golpe() -> Vector2:
 
 func _iniciar_golpe() -> void:
 	golpeando = true
-	tiempo_golpe = 0.45
+	tiempo_golpe = 0.6
 	enfriamiento_golpe = 0.5
 	# Efecto visual de golpe (lunge ligero).
 	var dir := _direccion_golpe()
 	offset_golpe = dir * 3.0
 	var tw := create_tween()
 	tw.tween_property(self, "offset_golpe", Vector2.ZERO, 0.2)
-	# Animación de golpe (sprite sheet).
+	# Animación de golpe (sprite sheet) con dirección fijada.
+	direccion_golpe_anim = ultima_direccion
 	_reproducir_animacion_golpe()
 	# Lógica de golpe y sonido según objetivo.
 	var resultado := {}
@@ -325,12 +333,12 @@ func _actualizar_animacion(direccion: Vector2, nadando: bool, corriendo: bool) -
 	else:
 		animacion = ("walk_" if moviendose else "idle_") + ultima_direccion
 
-	# Durante el golpe se reproduce la animación de golpe, pero se actualiza dirección/offset/base.
+	# Durante el golpe se reproduce la animación de golpe con dirección fijada.
 	if animacion_golpeando:
-		var hit_anim := "hit_" + ultima_direccion
+		var hit_anim := "hit_" + direccion_golpe_anim
 		if sprite.sprite_frames != null and sprite.sprite_frames.has_animation(hit_anim):
 			animacion = hit_anim
-	sprite.flip_h = ultima_direccion == "right"
+	sprite.flip_h = (direccion_golpe_anim == "right") if animacion_golpeando else (ultima_direccion == "right")
 
 	# Escala y alineación de pies/base. En agua el personaje se hunde para cubrir las botas.
 	# Algunas animaciones (golpe, nado_atras) usan frames de mayor tamaño (362x724) y requieren escala reducida.
@@ -472,7 +480,7 @@ func _reproducir_animacion_golpe() -> void:
 	var sf := sprite.sprite_frames
 	if sf == null:
 		return
-	var anim_name := "hit_" + ultima_direccion
+	var anim_name := "hit_" + direccion_golpe_anim
 	if not sf.has_animation(anim_name):
 		animacion_golpeando = false
 		return

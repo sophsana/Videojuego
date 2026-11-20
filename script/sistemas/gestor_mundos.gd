@@ -258,7 +258,19 @@ func _leer_mundo(ruta: String) -> Dictionary:
 		arbustos = cambios["arbustos_recolectados"]
 	else:
 		for id in arbustos.keys():
-			if not id is String or arbustos[id] != true:
+			if not id is String:
+				arbustos.erase(id)
+				continue
+			var v = arbustos[id]
+			if v == true:
+				continue
+			if v is int or v is float:
+				var n := int(v)
+				if n <= 0:
+					arbustos[id] = true
+				else:
+					arbustos[id] = n
+			else:
 				arbustos.erase(id)
 	var rocas_g = cambios.get("rocas_golpeadas", {})
 	if not rocas_g is Dictionary:

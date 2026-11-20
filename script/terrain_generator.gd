@@ -395,7 +395,11 @@ func _colocar_animado(tipo: String, posicion: Vector2, ancho: float, arbusto_id:
 	sprite.name = "Sprite"
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var vacio: SpriteFrames = sprites_recursos.get(tipo + "_vacio", frames)
-	sprite.sprite_frames = vacio if not arbusto_id.is_empty() and arbustos_recolectados.has(arbusto_id) else frames
+	var arbusto_vacio := false
+	if not arbusto_id.is_empty() and arbustos_recolectados.has(arbusto_id):
+		var estado_a = arbustos_recolectados.get(arbusto_id, null)
+		arbusto_vacio = (estado_a == true or (estado_a is int and int(estado_a) <= 0) or (estado_a is float and int(estado_a) <= 0))
+	sprite.sprite_frames = vacio if arbusto_vacio else frames
 	sprite.scale = Vector2.ONE * escala
 	sprite.position = Vector2(0, MARGEN_PROFUNDIDAD_BASE)
 	sprite.offset.y = -tamano_original.y / 2.0
@@ -885,6 +889,17 @@ func _desindexar_recurso_visual(recurso: Node2D) -> void:
 
 
 
+func _arbusto_tiene_frutos(id: String) -> bool:
+	if not arbustos_recolectados.has(id):
+		return true
+	var v = arbustos_recolectados[id]
+	if v == true:
+		return false
+	if v is int or v is float:
+		return int(v) > 0
+	return false
+
+
 func recolectar_cercano(posicion: Vector2, alcance: float = 60.0) -> bool:
 	var mas_cercano := ""
 	var distancia := alcance
@@ -894,7 +909,7 @@ func recolectar_cercano(posicion: Vector2, alcance: float = 60.0) -> bool:
 		for x in range(-radio, radio + 1):
 			var celda := Vector2i(posmod(centro.x + x, MAP_SIZE), posmod(centro.y + y, MAP_SIZE))
 			var id: String = arbustos_por_celda.get(celda, "")
-			if id.is_empty() or arbustos_recolectados.has(id):
+			if id.is_empty() or not _arbusto_tiene_frutos(id):
 				continue
 			var visuales: Array = visuales_arbustos.get(id, [])
 			if visuales.is_empty():
@@ -921,41 +936,64 @@ func recolectar_cercano(posicion: Vector2, alcance: float = 60.0) -> bool:
 		tipo = String(sprite_ref.get_meta("tipo_arbusto", tipo))
 	var indice := int(tipo.trim_prefix("arbusto_"))
 	var datos: Dictionary = Catalogo.ARBUSTOS[clampi(indice, 0, Catalogo.ARBUSTOS.size() - 1)]
-	var cantidad := int(datos.get("frutos", 2))
+	var cantidad_total := int(datos.get("frutos", 2))
+	var cantidad_disponible := cantidad_total
+	if arbustos_recolectados.has(mas_cercano):
+		var estado_actual = arbustos_recolectados.get(mas_cercano)
+		if estado_actual is int or estado_actual is float:
+			cantidad_disponible = clampi(int(estado_actual), 0, cantidad_total)
+		elif estado_actual == true:
+			return false
 	var item_id := String(datos.get("item_id", "fruto_alienigena"))
 	var item_nombre := String(datos.get("item_nombre", "Fruto alienígena"))
 	var item_def := {"icono": String(datos.get("item_icono", ""))}
-	if inventario.has_method("puede_agregar") and not inventario.puede_agregar(item_id, cantidad):
+	var espacio := cantidad_disponible
+	if inventario.has_method("espacio_para"):
+		espacio = mini(cantidad_disponible, int(inventario.espacio_para(item_id, int(item_def.get("max_pila", 64)))))
+	elif inventario.has_method("puede_agregar") and not inventario.puede_agregar(item_id, cantidad_disponible):
+		espacio = 0
+	if espacio <= 0:
 		var interfaz_llena := get_node_or_null("InterfazMundo")
 		if interfaz_llena != null and interfaz_llena.has_method("mostrar_mensaje"):
 			interfaz_llena.mostrar_mensaje("Inventario lleno")
 		return false
-	if not inventario.agregar(item_id, item_nombre, cantidad, item_def):
+	var agregado := 0
+	if inventario.has_method("agregar_hasta"):
+		agregado = int(inventario.agregar_hasta(item_id, item_nombre, espacio, item_def))
+	elif inventario.agregar(item_id, item_nombre, espacio, item_def):
+		agregado = espacio
+	if agregado <= 0:
 		var interfaz_llena := get_node_or_null("InterfazMundo")
 		if interfaz_llena != null and interfaz_llena.has_method("mostrar_mensaje"):
 			interfaz_llena.mostrar_mensaje("Inventario lleno")
 		return false
-	arbustos_recolectados[mas_cercano] = true
+	var restante := cantidad_disponible - agregado
+	if restante <= 0:
+		arbustos_recolectados[mas_cercano] = true
+	else:
+		arbustos_recolectados[mas_cercano] = restante
 	var interfaz := get_node_or_null("InterfazMundo")
 	if interfaz != null and interfaz.has_method("actualizar_inventario"):
 		interfaz.actualizar_inventario()
-	for recurso in visuales_objetivo:
-		if recurso == null or not is_instance_valid(recurso):
-			continue
-		var sprite := _sprite_animado_recurso(recurso)
-		if sprite == null:
-			continue
-		var tipo_sprite := String(recurso.get_meta("tipo_arbusto", tipo))
-		if sprite.has_meta("tipo_arbusto"):
-			tipo_sprite = String(sprite.get_meta("tipo_arbusto", tipo_sprite))
-		var estaba_activo := sprite.is_playing()
-		var vacio: SpriteFrames = sprites_recursos.get(tipo_sprite + "_vacio", sprite.sprite_frames)
-		sprite.sprite_frames = vacio
-		sprite.frame = 0
-		if estaba_activo:
-			sprite.play("viento")
-		else:
-			sprite.stop()
+	# Actualizar sprite: vacío solo si ya no quedan frutos.
+	if restante <= 0:
+		for recurso in visuales_objetivo:
+			if recurso == null or not is_instance_valid(recurso):
+				continue
+			var sprite := _sprite_animado_recurso(recurso)
+			if sprite == null:
+				continue
+			var tipo_sprite := String(recurso.get_meta("tipo_arbusto", tipo))
+			if sprite.has_meta("tipo_arbusto"):
+				tipo_sprite = String(sprite.get_meta("tipo_arbusto", tipo_sprite))
+			var estaba_activo := sprite.is_playing()
+			var vacio: SpriteFrames = sprites_recursos.get(tipo_sprite + "_vacio", sprite.sprite_frames)
+			sprite.sprite_frames = vacio
+			sprite.frame = 0
+			if estaba_activo:
+				sprite.play("viento")
+			else:
+				sprite.stop()
 	return true
 
 
@@ -1193,6 +1231,17 @@ func _precalcular_terreno() -> void:
 				await get_tree().process_frame
 		visual = siguiente
 	visual = _limpiar_terreno_visual(visual)
+	# Mantener coherencia agua/tierra entre terreno lógico y visual para evitar
+	# nadar sobre terreno que se ve como tierra (o caminar sobre agua visual).
+	for i in range(visual.size()):
+		var logico := int(cache[i])
+		var vis := int(visual[i])
+		var logico_agua := logico == DEEP_WATER or logico == WATER
+		var vis_agua := vis == DEEP_WATER or vis == WATER
+		if logico_agua:
+			visual[i] = logico
+		elif vis_agua:
+			visual[i] = logico
 	terreno_visual = visual
 
 

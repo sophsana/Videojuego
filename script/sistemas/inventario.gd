@@ -112,32 +112,33 @@ func _normalizar_slot(indice: int, valor) -> void:
 	}
 
 
+func espacio_para(id: String, max_pila: int = MAX_PILA) -> int:
+	if not (max_pila is int or max_pila is float):
+		max_pila = MAX_PILA
+	max_pila = clampi(int(max_pila), 1, MAX_PILA)
+	var espacio := 0
+	for slot in slots:
+		if slot != null and String(slot.get("id", "")) == id:
+			espacio += maxi(0, int(slot.get("max_pila", max_pila)) - int(slot.get("cantidad", 0)))
+	for slot in slots:
+		if slot == null:
+			espacio += max_pila
+	return espacio
+
+
 func puede_agregar(id: String, cantidad: int, max_pila: int = MAX_PILA) -> bool:
 	if cantidad <= 0:
 		return true
-	var restante := cantidad
-	for slot in slots:
-		if slot != null and String(slot.get("id", "")) == id:
-			restante -= maxi(0, int(slot.get("max_pila", max_pila)) - int(slot.get("cantidad", 0)))
-			if restante <= 0:
-				return true
-	for slot in slots:
-		if slot == null:
-			restante -= max_pila
-			if restante <= 0:
-				return true
-	return restante <= 0
+	return espacio_para(id, max_pila) >= cantidad
 
 
-func agregar(id: String, nombre: String, cantidad: int, definicion: Dictionary = {}, emitir := true) -> bool:
+func agregar_hasta(id: String, nombre: String, cantidad: int, definicion: Dictionary = {}, emitir := true) -> int:
 	if cantidad <= 0:
-		return true
+		return 0
 	var max_pila = definicion.get("max_pila", MAX_PILA)
 	if not (max_pila is int or max_pila is float):
 		max_pila = MAX_PILA
 	max_pila = clampi(int(max_pila), 1, MAX_PILA)
-	if not puede_agregar(id, cantidad, max_pila):
-		return false
 	var restante := cantidad
 	# Completar pilas existentes del mismo objeto.
 	for i in range(TAMANO):
@@ -174,9 +175,22 @@ func agregar(id: String, nombre: String, cantidad: int, definicion: Dictionary =
 			restante -= mover
 			if restante <= 0:
 				break
-	if emitir:
+	var agregado := cantidad - restante
+	if emitir and agregado > 0:
 		cambiado.emit()
-	return restante <= 0
+	return agregado
+
+
+func agregar(id: String, nombre: String, cantidad: int, definicion: Dictionary = {}, emitir := true) -> bool:
+	if cantidad <= 0:
+		return true
+	var max_pila = definicion.get("max_pila", MAX_PILA)
+	if not (max_pila is int or max_pila is float):
+		max_pila = MAX_PILA
+	max_pila = clampi(int(max_pila), 1, MAX_PILA)
+	if not puede_agregar(id, cantidad, max_pila):
+		return false
+	return agregar_hasta(id, nombre, cantidad, definicion, emitir) == cantidad
 
 
 func contar(id: String) -> int:

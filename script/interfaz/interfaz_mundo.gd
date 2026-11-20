@@ -382,19 +382,20 @@ func _construir_menu_pausa(root: Control) -> void:
 	contenido.add_child(panel_pausa_principal)
 
 	const TEX_BOTONES_GROUP := preload("res://recursos_interfaz/botones/botones_group.png")
+	var tam_boton_pausa := Vector2(280, 95)
 	var btn_volver := _crear_texture_button(
 		TEX_BOTON_VOLVER,
 		Rect2(0, 115, 360, 115), Rect2(360, 115, 360, 115), Rect2(720, 115, 360, 115),
-		Vector2(260, 80)
+		tam_boton_pausa
 	)
 	btn_volver.pressed.connect(_reanudar)
 	panel_pausa_principal.add_child(btn_volver)
 
-	# guardar_salir.png: 2172x724, 3 estados (normal/hover/pressed) con contenido visible centrado.
+	# guardar_salir.png: 2172x724, 3 estados (normal/hover/pressed). Recorte amplio para mostrar el botón completo.
 	var btn_guardar := _crear_texture_button(
 		TEX_BOTON_GUARDAR_SALIR,
-		Rect2(30, 258, 664, 188), Rect2(754, 258, 664, 188), Rect2(1478, 258, 664, 188),
-		Vector2(260, 80)
+		Rect2(0, 210, 724, 280), Rect2(724, 210, 724, 280), Rect2(1448, 210, 724, 280),
+		tam_boton_pausa
 	)
 	btn_guardar.pressed.connect(_guardar_y_salir_desde_pausa)
 	panel_pausa_principal.add_child(btn_guardar)
@@ -402,7 +403,7 @@ func _construir_menu_pausa(root: Control) -> void:
 	var btn_opciones := _crear_texture_button(
 		TEX_BOTONES_GROUP,
 		Rect2(360, 109, 360, 137), Rect2(360, 299, 360, 137), Rect2(360, 489, 360, 137),
-		Vector2(260, 80)
+		tam_boton_pausa
 	)
 	btn_opciones.pressed.connect(_mostrar_opciones_pausa)
 	panel_pausa_principal.add_child(btn_opciones)
@@ -445,7 +446,7 @@ func _construir_menu_pausa(root: Control) -> void:
 	var btn_volver_op := _crear_texture_button(
 		TEX_BOTON_VOLVER,
 		Rect2(0, 115, 360, 115), Rect2(360, 115, 360, 115), Rect2(720, 115, 360, 115),
-		Vector2(220, 70)
+		Vector2(240, 80)
 	)
 	btn_volver_op.pressed.connect(_ocultar_opciones_pausa)
 	panel_pausa_opciones.add_child(btn_volver_op)
