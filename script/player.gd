@@ -15,11 +15,9 @@ const ROCK: int = 5
 const RUN_MULT: float = 1.55
 const SWIM_MULT: float = 0.45
 const SWIM_RUN_MULT: float = 0.72
-const WADE_MULT: float = 0.5
 # Hambre por segundo según actividad (acumulada fraccionalmente).
 const HAMBRE_NADO: float = 0.08
 const HAMBRE_CORRER: float = 0.18
-const CLIP_VADEO: float = 0.55
 
 @export var walk_speed: float = 100.0
 @export var acceleration: float = 600.0
@@ -30,8 +28,6 @@ signal hambre_cambiada(hambre: int, hambre_maxima: int)
 
 var current_terrain: int = GRASS
 var terrain_speed: float = 1.0
-var tile_x_actual: int = 0
-var tile_y_actual: int = 0
 var world: Node2D
 var ultima_direccion := "down"
 var espera_reposo := 3.0
@@ -41,7 +37,6 @@ var vida := 20
 var hambre_maxima := 20
 var hambre := 20
 var hambre_acumulada: float = 0.0
-var material_recorte: ShaderMaterial
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 
 
@@ -50,24 +45,13 @@ func _ready() -> void:
 	if world != null and world.name == "Recursos":
 		world = world.get_parent()
 	_cargar_supervivencia()
-	_preparar_recorte_agua()
 	_asegurar_animaciones_nado()
-	_actualizar_animacion(Vector2.ZERO, false, false, false)
+	_actualizar_animacion(Vector2.ZERO, false, false)
 	sprite.animation_finished.connect(_terminar_reposo)
 	espera_reposo = randf_range(2.5, 6.0)
 	# La profundidad se resuelve por Y-sort usando la posición de los pies.
 	z_index = 0
 	z_as_relative = true
-
-
-func _preparar_recorte_agua() -> void:
-	var shader = load("res://shaders/recorte_agua.gdshader")
-	if shader == null:
-		return
-	material_recorte = ShaderMaterial.new()
-	material_recorte.shader = shader
-	material_recorte.set_shader_parameter("clip_bottom", 1.0)
-	sprite.material = material_recorte
 
 
 func _physics_process(delta: float) -> void:
@@ -85,8 +69,7 @@ func _physics_process(delta: float) -> void:
 	)
 
 	var moviendose := direction != Vector2.ZERO
-	var nadando := _es_nadando(tile_x_actual, tile_y_actual)
-	var vadeando := _es_vadeando(tile_x_actual, tile_y_actual)
+	var nadando := _esta_nadando()
 	var quiere_correr := Input.is_action_pressed("correr")
 	var corriendo := quiere_correr and moviendose
 
@@ -95,10 +78,6 @@ func _physics_process(delta: float) -> void:
 		velocidad_base = walk_speed * (SWIM_RUN_MULT if corriendo else SWIM_MULT)
 		if current_terrain == DEEP_WATER and not corriendo:
 			velocidad_base *= 0.85
-	elif vadeando:
-		# Vadeo en orilla (menos profundo): se camina con animaciones no acuáticas.
-		velocidad_base = walk_speed * WADE_MULT
-		corriendo = false
 	else:
 		var factor := terrain_speed
 		if corriendo:
@@ -106,7 +85,7 @@ func _physics_process(delta: float) -> void:
 		velocidad_base = walk_speed * factor
 
 	var target_velocity: Vector2 = direction * velocidad_base
-	_actualizar_animacion(direction, nadando, vadeando, corriendo)
+	_actualizar_animacion(direction, nadando, corriendo)
 
 	if moviendose:
 		velocity = velocity.move_toward(
@@ -159,7 +138,6 @@ func _intentar_comer_seleccionado() -> bool:
 
 
 func _actualizar_reposo(delta: float, direccion: Vector2, nadando: bool) -> void:
-	# En vadeo se usan animaciones no acuáticas, por lo que el reposo lateral sigue siendo válido.
 	if nadando or direccion != Vector2.ZERO or velocity.length() > 1.0:
 		if reposo_activo:
 			sprite.stop()
@@ -186,15 +164,21 @@ func _terminar_reposo(nombre: StringName) -> void:
 
 
 func update_terrain() -> void:
-	if world == null or not world.has_method("get_terrain"):
+	if not world.has_method("get_terrain"):
 		terrain_speed = 1.0
-		current_terrain = GRASS
 		return
 
-	tile_x_actual = posmod(floori(global_position.x / TILE_SIZE), MAP_SIZE)
-	tile_y_actual = posmod(floori(global_position.y / TILE_SIZE), MAP_SIZE)
+	var tile_x: int = posmod(
+		floori(global_position.x / TILE_SIZE),
+		MAP_SIZE
+	)
 
-	current_terrain = world.get_terrain(tile_x_actual, tile_y_actual)
+	var tile_y: int = posmod(
+		floori(global_position.y / TILE_SIZE),
+		MAP_SIZE
+	)
+
+	current_terrain = world.get_terrain(tile_x, tile_y)
 
 	match current_terrain:
 		DEEP_WATER:
@@ -213,31 +197,6 @@ func update_terrain() -> void:
 			terrain_speed = 1.0
 
 
-func _es_nadando(tx: int, ty: int) -> bool:
-	if current_terrain == DEEP_WATER:
-		return true
-	if current_terrain == WATER:
-		return not _es_adyacente_a_tierra(tx, ty)
-	return false
-
-
-func _es_vadeando(tx: int, ty: int) -> bool:
-	return current_terrain == WATER and _es_adyacente_a_tierra(tx, ty)
-
-
-func _es_adyacente_a_tierra(tx: int, ty: int) -> bool:
-	if world == null or not world.has_method("get_terrain"):
-		return false
-	for dy in range(-1, 2):
-		for dx in range(-1, 2):
-			if dx == 0 and dy == 0:
-				continue
-			var t: int = world.get_terrain(tx + dx, ty + dy)
-			if t >= SAND:
-				return true
-	return false
-
-
 func wrap_position() -> void:
 	var posicion_anterior := global_position
 	global_position.x = fposmod(global_position.x, WORLD_SIZE)
@@ -248,7 +207,7 @@ func wrap_position() -> void:
 			camara.reset_smoothing()
 
 
-func _actualizar_animacion(direccion: Vector2, nadando: bool, vadeando: bool, corriendo: bool) -> void:
+func _actualizar_animacion(direccion: Vector2, nadando: bool, corriendo: bool) -> void:
 	_asegurar_animaciones_nado()
 	var moviendose := direccion != Vector2.ZERO
 	if moviendose:
@@ -266,20 +225,11 @@ func _actualizar_animacion(direccion: Vector2, nadando: bool, vadeando: bool, co
 	else:
 		animacion = ("walk_" if moviendose else "idle_") + ultima_direccion
 
-	# Recorte para ocultar botas al vadear (animaciones no acuáticas, quieto o en movimiento).
-	if material_recorte != null:
-		material_recorte.set_shader_parameter("clip_bottom", CLIP_VADEO if vadeando else 1.0)
-
-	# Escala y alineación de pies/base.
+	# Escala y alineación de pies/base. En agua el personaje se hunde para cubrir las botas.
 	if nadando:
 		sprite.scale = Vector2(0.2, 0.2)
 		var hundimiento := 11.0 if current_terrain == WATER else 12.0
 		sprite.position.y = -7.0 + hundimiento
-	elif vadeando:
-		# Hundido hasta la mitad en orilla menos profunda (sin animación de nado).
-		sprite.scale = Vector2(0.133333, 0.133333) if animacion in ["idle_left", "idle_right"] else Vector2(0.2, 0.2)
-		var base_y := -3.2 if animacion in ["idle_left", "idle_right"] else -7.0
-		sprite.position.y = base_y + 7.0
 	else:
 		sprite.scale = Vector2(0.133333, 0.133333) if animacion in ["idle_left", "idle_right"] else Vector2(0.2, 0.2)
 		sprite.position.y = -3.2 if animacion in ["idle_left", "idle_right"] else -7.0
@@ -304,6 +254,10 @@ func _actualizar_animacion(direccion: Vector2, nadando: bool, vadeando: bool, co
 	elif not reposo_activo:
 		sprite.stop()
 		sprite.frame = 0
+
+
+func _esta_nadando() -> bool:
+	return current_terrain == WATER or current_terrain == DEEP_WATER
 
 
 func _actualizar_consumo_hambre(delta: float, nadando: bool, corriendo: bool, moviendose: bool) -> void:
