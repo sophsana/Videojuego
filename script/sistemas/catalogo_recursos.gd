@@ -9,8 +9,8 @@ const ARBOLES := [
 	{"ruta": "res://assets/recursos/arbol_animado3.png", "peso": 15, "ancho": 48},
 ]
 const ARBUSTOS := [
-	{"ruta": "res://assets/recursos/arbusto_animado1.png", "vacio": "res://assets/recursos/arbusto_animado1_sin_frutos.png", "ancho": 44},
-	{"ruta": "res://assets/recursos/arbusto_animado2_con_frutos.png", "vacio": "res://assets/recursos/arbusto_animado2_sin_frutos.png", "ancho": 40},
+	{"ruta": "res://assets/recursos/arbusto_animado1.png", "vacio": "res://assets/recursos/arbusto_animado1_sin_frutos.png", "ancho": 44, "cosechable": true},
+	{"ruta": "res://assets/recursos/arbusto_animado2_con_frutos.png", "vacio": "res://assets/recursos/arbusto_animado2_sin_frutos.png", "ancho": 40, "cosechable": false},
 ]
 const ROCAS := "res://assets/recursos/roca_grupo.png"
 const PESOS_ROCAS := [25, 12, 22, 12, 10, 19]

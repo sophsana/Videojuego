@@ -197,17 +197,19 @@ func generate_resources() -> void:
 				var tree_chance: float
 
 				if in_forest:
-					tree_chance = 0.12
+					tree_chance = 0.26
 				else:
-					tree_chance = 0.008
+					tree_chance = 0.035
 
-				if detail > -0.2 and resource_rng.randf() < tree_chance:
+				if (in_forest or detail > -0.3) and resource_rng.randf() < tree_chance:
 					var tipo := Catalogo.elegir_indice(Catalogo.PESOS_ARBOLES, resource_rng.randf())
 					_colocar_animado("arbol_%d" % tipo, tile_center, float(Catalogo.ARBOLES[tipo].ancho), "")
 
 				elif resource_rng.randf() < 0.10:
-					var tipo := resource_rng.randi_range(0, 1)
-					_colocar_animado("arbusto_%d" % tipo, tile_center, float(Catalogo.ARBUSTOS[tipo].ancho), "%d_%d" % [x, y])
+					var tipo := resource_rng.randi_range(0, Catalogo.ARBUSTOS.size() - 1)
+					var datos_arbusto: Dictionary = Catalogo.ARBUSTOS[tipo]
+					var id_arbusto := "%d_%d" % [x, y] if datos_arbusto.get("cosechable", false) else ""
+					_colocar_animado("arbusto_%d" % tipo, tile_center, float(datos_arbusto.ancho), id_arbusto)
 				elif resource_rng.randf() < 0.04:
 					place_rock(tile_center)
 
