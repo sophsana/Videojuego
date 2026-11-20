@@ -201,6 +201,25 @@ func slot(indice: int):
 	return slots[indice]
 
 
+func quitar_en_slot(indice: int, cantidad: int, emitir := true) -> bool:
+	if indice < 0 or indice >= TAMANO or cantidad <= 0:
+		return false
+	var s = slots[indice]
+	if s == null:
+		return false
+	var actual := int(s.get("cantidad", 0))
+	if actual < cantidad:
+		return false
+	var nueva := actual - cantidad
+	if nueva <= 0:
+		slots[indice] = null
+	else:
+		s["cantidad"] = nueva
+	if emitir:
+		cambiado.emit()
+	return true
+
+
 # Compatibilidad con código antiguo que leía .objetos
 var objetos: Dictionary:
 	get:
