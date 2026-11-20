@@ -76,7 +76,20 @@ func crear_mundo(nombre: String, semilla: int, dificultad: String) -> Dictionary
 	if id.is_empty():
 		ultimo_error = "No se pudo asignar un identificador único."
 		return {}
-	var datos := {"id": id, "nombre": nombre, "semilla": semilla, "dificultad": dificultad, "fecha_creacion": Time.get_datetime_string_from_system(), "fecha_ultimo_guardado": "", "tamano_tile": Dimensiones.TILE_SIZE, "progreso": {"jugador": {}, "cambios_mundo": {}}}
+	var datos := {
+		"id": id,
+		"nombre": nombre,
+		"semilla": semilla,
+		"dificultad": dificultad,
+		"fecha_creacion": Time.get_datetime_string_from_system(),
+		"fecha_ultimo_guardado": "",
+		"tamano_tile": Dimensiones.TILE_SIZE,
+		"progreso": {
+			"jugador": {"vida": 20, "hambre": 20},
+			"cambios_mundo": {"arbustos_recolectados": {}},
+			"inventario": {"version": 2, "slots": [null, null, null, null, null, null, null, null, null, null], "seleccionado": 0},
+		},
+	}
 	var ruta := DIRECTORIO.path_join(id + ".json")
 	var archivo := FileAccess.open(ruta, FileAccess.WRITE)
 	if archivo == null:
@@ -97,7 +110,8 @@ func crear_mundo(nombre: String, semilla: int, dificultad: String) -> Dictionary
 
 
 func iniciar_mundo(datos: Dictionary) -> Error:
-	if datos.get("tamano_tile", Dimensiones.TILE_SIZE_ANTERIOR) == Dimensiones.TILE_SIZE_ANTERIOR and not datos.get("progreso", {}).get("cambios_mundo", {}).is_empty():
+	var cambios: Dictionary = datos.get("progreso", {}).get("cambios_mundo", {})
+	if datos.get("tamano_tile", Dimensiones.TILE_SIZE_ANTERIOR) == Dimensiones.TILE_SIZE_ANTERIOR and not cambios.is_empty() and cambios != {"arbustos_recolectados": {}}:
 		ultimo_error = "Este mundo antiguo contiene cambios que no se pueden migrar automáticamente."
 		return ERR_INVALID_DATA
 	mundo_actual = datos.duplicate(true)
@@ -108,7 +122,7 @@ func iniciar_mundo(datos: Dictionary) -> Error:
 	return error
 
 
-func guardar_progreso(posicion: Vector2) -> bool:
+func guardar_progreso(posicion: Vector2, inventario = null, arbustos = null, vida = null, hambre = null) -> bool:
 	ultimo_error = ""
 	if mundo_actual.is_empty() or not mundo_actual.get("id") is String:
 		ultimo_error = "No hay un mundo guardado seleccionado."
@@ -125,9 +139,24 @@ func guardar_progreso(posicion: Vector2) -> bool:
 		return false
 	var datos := existente.duplicate(true)
 	var progreso: Dictionary = datos.get("progreso", {}).duplicate(true)
-	progreso["jugador"] = {"posicion": {"x": posicion.x, "y": posicion.y}}
-	if not progreso.has("cambios_mundo"):
+	var jugador: Dictionary = progreso.get("jugador", {}).duplicate(true)
+	jugador["posicion"] = {"x": posicion.x, "y": posicion.y}
+	if vida != null and (vida is int or vida is float):
+		jugador["vida"] = clampi(int(vida), 0, 20)
+	if hambre != null and (hambre is int or hambre is float):
+		jugador["hambre"] = clampi(int(hambre), 0, 20)
+	progreso["jugador"] = jugador
+	if not progreso.has("cambios_mundo") or not progreso["cambios_mundo"] is Dictionary:
 		progreso["cambios_mundo"] = {}
+	if inventario != null:
+		if inventario is Object and inventario.has_method("serializar"):
+			progreso["inventario"] = inventario.serializar()
+		else:
+			progreso["inventario"] = inventario.duplicate(true)
+	if arbustos != null:
+		var cambios: Dictionary = progreso.get("cambios_mundo", {}).duplicate(true)
+		cambios["arbustos_recolectados"] = arbustos.duplicate(true)
+		progreso["cambios_mundo"] = cambios
 	datos["progreso"] = progreso
 	datos["tamano_tile"] = Dimensiones.TILE_SIZE
 	datos["fecha_ultimo_guardado"] = Time.get_datetime_string_from_system()
@@ -187,13 +216,62 @@ func _leer_mundo(ruta: String) -> Dictionary:
 		return {}
 	var progreso = datos.get("progreso", {})
 	if not progreso is Dictionary:
-		return {}
+		progreso = {}
+		datos["progreso"] = progreso
 	var jugador = progreso.get("jugador", {})
-	if not jugador is Dictionary or not progreso.get("cambios_mundo", {}) is Dictionary:
-		return {}
+	if not jugador is Dictionary:
+		jugador = {}
+		progreso["jugador"] = jugador
+	var cambios = progreso.get("cambios_mundo", {})
+	if not cambios is Dictionary:
+		cambios = {}
+		progreso["cambios_mundo"] = cambios
+	# Inventario: aceptar formato antiguo (dict por id) o nuevo (slots/version).
+	var inventario = progreso.get("inventario", {})
+	if not inventario is Dictionary and not inventario is Array:
+		inventario = {}
+		progreso["inventario"] = inventario
+	if inventario is Dictionary and not inventario.has("slots"):
+		for id in inventario:
+			var objeto = inventario[id]
+			if not id is String or not objeto is Dictionary:
+				return {}
+			var cantidad = objeto.get("cantidad", 0)
+			if not (cantidad is int or cantidad is float) or cantidad < 0 or cantidad != floor(float(cantidad)):
+				return {}
+	elif inventario is Dictionary and inventario.has("slots"):
+		if not inventario.slots is Array:
+			progreso["inventario"] = {}
+	# Arbustos recolectados: aceptar dict válido, o sanear entradas inválidas.
+	var arbustos = cambios.get("arbustos_recolectados", {})
+	if not arbustos is Dictionary:
+		cambios["arbustos_recolectados"] = {}
+	else:
+		for id in arbustos.keys():
+			if not id is String or arbustos[id] != true:
+				arbustos.erase(id)
+	# Valores de supervivencia compatibles con partidas antiguas.
+	var vida_v = jugador.get("vida", 20)
+	jugador["vida"] = clampi(int(vida_v), 0, 20) if (vida_v is int or vida_v is float) else 20
+	var hambre_v = jugador.get("hambre", 20)
+	jugador["hambre"] = clampi(int(hambre_v), 0, 20) if (hambre_v is int or hambre_v is float) else 20
+	# Normalizar inventario nuevo.
+	if inventario is Dictionary and inventario.has("slots"):
+		if not inventario.has("seleccionado") or not (inventario.seleccionado is int or inventario.seleccionado is float):
+			inventario["seleccionado"] = 0
+		else:
+			inventario["seleccionado"] = clampi(int(inventario.seleccionado), 0, 9)
+		if inventario.has("version") and (inventario.version is int or inventario.version is float):
+			inventario["version"] = int(inventario.version)
+		if inventario.slots is Array:
+			# Asegurar tamaño 10
+			while (inventario.slots as Array).size() < 10:
+				(inventario.slots as Array).append(null)
+			if (inventario.slots as Array).size() > 10:
+				inventario.slots = (inventario.slots as Array).slice(0, 10)
 	var tamano = datos.get("tamano_tile", Dimensiones.TILE_SIZE_ANTERIOR)
 	if not (tamano is int or tamano is float) or (tamano != Dimensiones.TILE_SIZE_ANTERIOR and tamano != Dimensiones.TILE_SIZE):
-		return {}
+		tamano = Dimensiones.TILE_SIZE_ANTERIOR
 	if datos.has("tamano_tile"):
 		datos.tamano_tile = int(tamano)
 	if jugador.has("posicion"):

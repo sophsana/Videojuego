@@ -38,3 +38,10 @@ renderer/rendering_method.mobile="gl_compatibility"
 [gui]
 
 theme/custom="res://recursos_interfaz/tema.tres"
+
+[input]
+
+interactuar={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":70)]
+}

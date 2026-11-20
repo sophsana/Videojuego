@@ -2,6 +2,7 @@ extends CanvasLayer
 
 var mensaje: Label
 var boton: Button
+var etiqueta_inventario: Label
 
 
 func _ready() -> void:
@@ -22,6 +23,16 @@ func _ready() -> void:
 	mensaje = Label.new()
 	mensaje.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	contenido.add_child(mensaje)
+	etiqueta_inventario = Label.new()
+	etiqueta_inventario.name = "Inventario"
+	contenido.add_child(etiqueta_inventario)
+	actualizar_inventario()
+
+
+func actualizar_inventario() -> void:
+	var objetos: Dictionary = get_parent().inventario.objetos
+	var cantidad := int(objetos.get("fruto_alienigena", {}).get("cantidad", 0))
+	etiqueta_inventario.text = "Frutos alienígenas: %d" % cantidad
 
 
 func _guardar_y_salir() -> void:
@@ -30,7 +41,7 @@ func _guardar_y_salir() -> void:
 	jugador.set_physics_process(false)
 	jugador.velocity = Vector2.ZERO
 	boton.disabled = true
-	if GestorMundos.guardar_progreso(jugador.position):
+	if GestorMundos.guardar_progreso(jugador.position, mundo.inventario.objetos, mundo.arbustos_recolectados):
 		var error := get_tree().change_scene_to_file("res://escenas/interfaz/seleccion_mundos.tscn")
 		if error == OK:
 			return

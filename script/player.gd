@@ -17,28 +17,40 @@ const ROCK: int = 5
 @export var acceleration: float = 600.0
 @export var deceleration: float = 800.0
 
+signal vida_cambiada(vida: int, vida_maxima: int)
+signal hambre_cambiada(hambre: int, hambre_maxima: int)
+
 var current_terrain: int = GRASS
 var terrain_speed: float = 1.0
 var world: Node2D
 var ultima_direccion := "down"
+var espera_reposo := 3.0
+var reposo_activo := false
+var vida_maxima := 20
+var vida := 20
+var hambre_maxima := 20
+var hambre := 20
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 
 
 func _ready() -> void:
 	world = get_parent()
+	_cargar_supervivencia()
 	_actualizar_animacion(Vector2.ZERO)
+	sprite.animation_finished.connect(_terminar_reposo)
+	espera_reposo = randf_range(2.5, 6.0)
 
 
 func _physics_process(delta: float) -> void:
-	move_and_slide()
-	wrap_position()
+	if Input.is_action_just_pressed("interactuar") and world != null and world.has_method("recolectar_cercano"):
+		world.recolectar_cercano(global_position)
 	update_terrain()
 
 	var direction: Vector2 = Input.get_vector(
 		"ui_left",
 		"ui_right",
-			"ui_up",
-			"ui_down"
+		"ui_up",
+		"ui_down"
 	)
 
 	var target_velocity: Vector2 = direction * walk_speed * terrain_speed
@@ -57,6 +69,34 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 	wrap_position()
+	_actualizar_reposo(delta, direction)
+	update_depth()
+
+
+func _actualizar_reposo(delta: float, direccion: Vector2) -> void:
+	if direccion != Vector2.ZERO or velocity.length() > 1.0:
+		if reposo_activo:
+			sprite.stop()
+			sprite.frame = 0
+			reposo_activo = false
+		espera_reposo = randf_range(2.5, 6.0)
+		return
+	if reposo_activo:
+		return
+	espera_reposo -= delta
+	if espera_reposo > 0.0:
+		return
+	reposo_activo = true
+	sprite.play("idle_" + ultima_direccion)
+	espera_reposo = randf_range(3.0, 7.0)
+
+
+func _terminar_reposo(nombre: StringName) -> void:
+	if nombre != sprite.animation or not reposo_activo:
+		return
+	reposo_activo = false
+	sprite.stop()
+	sprite.frame = 0
 
 
 func update_terrain() -> void:
@@ -96,6 +136,17 @@ func update_terrain() -> void:
 func update_depth() -> void:
 	# La profundidad se ordena por Y en el mundo, usando la posición de los pies.
 	z_index = 0
+	# Las hojas laterales de reposo usan otra escala y otro punto de apoyo.
+	var apoyo := -3.2 if sprite.animation in ["idle_left", "idle_right"] else -7.0
+	var profundo := false
+	if world != null and world.has_method("get_terrain"):
+		var x := posmod(floori(global_position.x / TILE_SIZE), MAP_SIZE)
+		var y := posmod(floori(global_position.y / TILE_SIZE), MAP_SIZE)
+		var on_rock: bool = world.get_terrain(x, y) == ROCK
+		var por_debajo: bool = world.get_terrain(posmod(x - 1, MAP_SIZE), y) == ROCK or world.get_terrain(posmod(x + 1, MAP_SIZE), y) == ROCK or world.get_terrain(x, posmod(y - 1, MAP_SIZE)) == ROCK or world.get_terrain(x, posmod(y + 1, MAP_SIZE)) == ROCK
+		profundo = on_rock or por_debajo
+	sprite.z_index = -1 if profundo else 0
+	sprite.position.y = apoyo - 3.0 if profundo else apoyo
 
 
 func wrap_position() -> void:
@@ -120,6 +171,75 @@ func _actualizar_animacion(direccion: Vector2) -> void:
 	var animacion := ("walk_" if direccion != Vector2.ZERO else "idle_") + ultima_direccion
 	# La hoja de reposo tiene celdas 270×360; las de caminata, 180×240.
 	sprite.scale = Vector2(0.133333, 0.133333) if animacion in ["idle_left", "idle_right"] else Vector2(0.2, 0.2)
-	sprite.position.y = -14.0 if animacion in ["idle_left", "idle_right"] else -7.0
-	if sprite.animation != animacion or not sprite.is_playing():
-		sprite.play(animacion)
+	# Alinear los píxeles inferiores de ambas hojas sobre el mismo punto de apoyo.
+	sprite.position.y = -3.2 if animacion in ["idle_left", "idle_right"] else -7.0
+	if sprite.animation != animacion:
+		sprite.animation = animacion
+	if direccion != Vector2.ZERO:
+		if not sprite.is_playing() or sprite.animation != animacion:
+			sprite.play(animacion)
+	elif not reposo_activo:
+		sprite.stop()
+		sprite.frame = 0
+
+
+func _cargar_supervivencia() -> void:
+	vida = vida_maxima
+	hambre = hambre_maxima
+	if GestorMundos.mundo_actual.is_empty():
+		return
+	var jugador: Dictionary = GestorMundos.mundo_actual.get("progreso", {}).get("jugador", {})
+	var v = jugador.get("vida", vida_maxima)
+	var h = jugador.get("hambre", hambre_maxima)
+	if v is int or v is float:
+		vida = clampi(int(v), 0, vida_maxima)
+	if h is int or h is float:
+		hambre = clampi(int(h), 0, hambre_maxima)
+
+
+func recibir_danio(cantidad: int) -> void:
+	if cantidad <= 0:
+		return
+	establecer_vida(vida - cantidad)
+
+
+func recuperar_vida(cantidad: int) -> void:
+	if cantidad <= 0:
+		return
+	establecer_vida(vida + cantidad)
+
+
+func establecer_vida(valor: int) -> void:
+	var nueva := clampi(valor, 0, vida_maxima)
+	if nueva == vida:
+		return
+	vida = nueva
+	vida_cambiada.emit(vida, vida_maxima)
+
+
+func consultar_vida_actual() -> int:
+	return vida
+
+
+func consultar_vida_maxima() -> int:
+	return vida_maxima
+
+
+func aumentar_hambre(cantidad: int) -> void:
+	if cantidad <= 0:
+		return
+	establecer_hambre(hambre + cantidad)
+
+
+func reducir_hambre(cantidad: int) -> void:
+	if cantidad <= 0:
+		return
+	establecer_hambre(hambre - cantidad)
+
+
+func establecer_hambre(valor: int) -> void:
+	var nueva := clampi(valor, 0, hambre_maxima)
+	if nueva == hambre:
+		return
+	hambre = nueva
+	hambre_cambiada.emit(hambre, hambre_maxima)
