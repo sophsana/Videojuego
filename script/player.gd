@@ -41,6 +41,7 @@ var golpeando: bool = false
 var tiempo_golpe: float = 0.0
 var enfriamiento_golpe: float = 0.0
 var offset_golpe: Vector2 = Vector2.ZERO
+var animacion_golpeando: bool = false
 var sonido_pasos: AudioStreamPlayer
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 
@@ -51,6 +52,7 @@ func _ready() -> void:
 		world = world.get_parent()
 	_cargar_supervivencia()
 	_asegurar_animaciones_nado()
+	_asegurar_animaciones_golpe()
 	_configurar_sonido_pasos()
 	_actualizar_animacion(Vector2.ZERO, false, false)
 	sprite.animation_finished.connect(_terminar_reposo)
@@ -65,11 +67,11 @@ func _physics_process(delta: float) -> void:
 		enfriamiento_golpe = maxf(0.0, enfriamiento_golpe - delta)
 	if golpeando:
 		tiempo_golpe -= delta
-		if tiempo_golpe <= 0.0:
+		if tiempo_golpe <= 0.0 and not animacion_golpeando:
 			golpeando = false
 			offset_golpe = Vector2.ZERO
 
-	if Input.is_action_just_pressed("golpear") and enfriamiento_golpe <= 0.0 and not golpeando:
+	if Input.is_action_just_pressed("golpear") and enfriamiento_golpe <= 0.0 and not golpeando and not animacion_golpeando:
 		_iniciar_golpe()
 
 	if Input.is_action_just_pressed("interactuar"):
@@ -200,19 +202,30 @@ func _direccion_golpe() -> Vector2:
 
 func _iniciar_golpe() -> void:
 	golpeando = true
-	tiempo_golpe = 0.28
-	enfriamiento_golpe = 0.35
-	# Efecto visual simple de golpe (lunge) como animación si no hay sprites dedicados.
+	tiempo_golpe = 0.45
+	enfriamiento_golpe = 0.5
+	# Efecto visual de golpe (lunge ligero).
 	var dir := _direccion_golpe()
-	offset_golpe = dir * 4.0
+	offset_golpe = dir * 3.0
 	var tw := create_tween()
-	tw.tween_property(self, "offset_golpe", Vector2.ZERO, 0.18)
-	# Sonido y lógica de golpe.
+	tw.tween_property(self, "offset_golpe", Vector2.ZERO, 0.2)
+	# Animación de golpe (sprite sheet).
+	_reproducir_animacion_golpe()
+	# Lógica de golpe y sonido según objetivo.
+	var resultado := {}
+	if world != null and world.has_method("golpear_cercano"):
+		var r = world.golpear_cercano(global_position, ultima_direccion)
+		if r is Dictionary:
+			resultado = r
+		elif r is bool and r:
+			resultado = {"exito": true, "tipo": "generico"}
+		else:
+			resultado = {"exito": false, "tipo": ""}
+	else:
+		resultado = {"exito": false, "tipo": ""}
 	var ga = get_node_or_null("/root/GestorAudio")
 	if ga != null and ga.has_method("reproducir_golpe"):
-		ga.reproducir_golpe()
-	if world != null and world.has_method("golpear_cercano"):
-		world.golpear_cercano(global_position, ultima_direccion)
+		ga.reproducir_golpe(String(resultado.get("tipo", "")))
 
 
 func _actualizar_reposo(delta: float, direccion: Vector2, nadando: bool) -> void:
@@ -234,7 +247,16 @@ func _actualizar_reposo(delta: float, direccion: Vector2, nadando: bool) -> void
 
 
 func _terminar_reposo(nombre: StringName) -> void:
-	if nombre != sprite.animation or not reposo_activo:
+	if nombre != sprite.animation:
+		return
+	if String(nombre).begins_with("hit_"):
+		animacion_golpeando = false
+		golpeando = false
+		offset_golpe = Vector2.ZERO
+		sprite.stop()
+		sprite.frame = 0
+		return
+	if not reposo_activo:
 		return
 	reposo_activo = false
 	sprite.stop()
@@ -287,6 +309,7 @@ func wrap_position() -> void:
 
 func _actualizar_animacion(direccion: Vector2, nadando: bool, corriendo: bool) -> void:
 	_asegurar_animaciones_nado()
+	_asegurar_animaciones_golpe()
 	var moviendose := direccion != Vector2.ZERO
 	if moviendose:
 		if absf(direccion.x) > absf(direccion.y):
@@ -295,7 +318,6 @@ func _actualizar_animacion(direccion: Vector2, nadando: bool, corriendo: bool) -
 			ultima_direccion = "down" if direccion.y > 0 else "up"
 		elif ultima_direccion not in ["left" if direccion.x < 0 else "right", "up" if direccion.y < 0 else "down"]:
 			ultima_direccion = "down" if direccion.y > 0 else "up"
-	sprite.flip_h = ultima_direccion == "right"
 
 	var animacion: String
 	if nadando:
@@ -303,9 +325,19 @@ func _actualizar_animacion(direccion: Vector2, nadando: bool, corriendo: bool) -
 	else:
 		animacion = ("walk_" if moviendose else "idle_") + ultima_direccion
 
+	# Durante el golpe se reproduce la animación de golpe, pero se actualiza dirección/offset/base.
+	if animacion_golpeando:
+		var hit_anim := "hit_" + ultima_direccion
+		if sprite.sprite_frames != null and sprite.sprite_frames.has_animation(hit_anim):
+			animacion = hit_anim
+	sprite.flip_h = ultima_direccion == "right"
+
 	# Escala y alineación de pies/base. En agua el personaje se hunde para cubrir las botas.
 	var base_y := 0.0
-	if nadando:
+	if animacion_golpeando and animacion.begins_with("hit_"):
+		sprite.scale = Vector2(0.2, 0.2)
+		base_y = -7.0
+	elif nadando:
 		sprite.scale = Vector2(0.2, 0.2)
 		var hundimiento := 11.0 if current_terrain == WATER else 12.0
 		base_y = -7.0 + hundimiento
@@ -316,7 +348,9 @@ func _actualizar_animacion(direccion: Vector2, nadando: bool, corriendo: bool) -
 
 	# Velocidad de animación: correr/nado rápido acelera la reproducción.
 	var velocidad_anim := 1.0
-	if nadando:
+	if animacion_golpeando and animacion.begins_with("hit_"):
+		velocidad_anim = 1.0
+	elif nadando:
 		velocidad_anim = 1.6 if corriendo else 1.0
 	elif moviendose and corriendo:
 		velocidad_anim = 1.55
@@ -324,7 +358,10 @@ func _actualizar_animacion(direccion: Vector2, nadando: bool, corriendo: bool) -
 
 	if sprite.animation != animacion:
 		sprite.animation = animacion
-	if moviendose:
+	if animacion_golpeando and animacion.begins_with("hit_"):
+		if not sprite.is_playing():
+			sprite.play(animacion)
+	elif moviendose:
 		if not sprite.is_playing() or sprite.animation != animacion:
 			sprite.play(animacion)
 	elif nadando:
@@ -385,6 +422,48 @@ func _asegurar_animaciones_nado() -> void:
 			at.atlas = tex
 			at.region = Rect2(i * 180, 0, 180, 360)
 			sf.add_frame(anim_name, at)
+
+
+func _asegurar_animaciones_golpe() -> void:
+	if sprite == null:
+		return
+	var sf := sprite.sprite_frames
+	if sf == null or sf.has_animation("hit_down"):
+		return
+	var tex := _cargar_textura("res://assets/Jugador/golpear.png")
+	if tex == null:
+		return
+	# Sprite sheet horizontal de 6 fotogramas (2172x724).
+	for anim_name in ["hit_down", "hit_up", "hit_left", "hit_right"]:
+		if sf.has_animation(anim_name):
+			continue
+		sf.add_animation(anim_name)
+		sf.set_animation_loop(anim_name, false)
+		sf.set_animation_speed(anim_name, 14.0)
+		for i in range(6):
+			var at := AtlasTexture.new()
+			at.atlas = tex
+			at.region = Rect2(i * 362, 0, 362, 724)
+			sf.add_frame(anim_name, at)
+
+
+func _reproducir_animacion_golpe() -> void:
+	if sprite == null:
+		return
+	_asegurar_animaciones_golpe()
+	var sf := sprite.sprite_frames
+	if sf == null:
+		return
+	var anim_name := "hit_" + ultima_direccion
+	if not sf.has_animation(anim_name):
+		animacion_golpeando = false
+		return
+	animacion_golpeando = true
+	reposo_activo = false
+	sprite.animation = anim_name
+	sprite.frame = 0
+	sprite.speed_scale = 1.0
+	sprite.play(anim_name)
 
 
 func _cargar_textura(ruta: String) -> Texture2D:

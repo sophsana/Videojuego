@@ -135,7 +135,7 @@ func _construir_ui() -> void:
 	bottom.anchor_bottom = 1.0
 	bottom.offset_left = 0
 	bottom.offset_right = 0
-	bottom.offset_top = -190
+	bottom.offset_top = -170
 	bottom.offset_bottom = -8
 	bottom.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -209,22 +209,22 @@ func _construir_ui() -> void:
 	for i in range(SLOTS):
 		var slotc := Control.new()
 		slotc.name = "Slot_%d" % i
-		slotc.custom_minimum_size = Vector2(52, 64)
+		slotc.custom_minimum_size = Vector2(52, 52)
 		slotc.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		slotc.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		slotc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slotc.mouse_filter = Control.MOUSE_FILTER_STOP
 		contenedor_slots.add_child(slotc)
 
 		var fondo := TextureRect.new()
 		fondo.name = "Fondo"
 		fondo.anchor_left = 0.5
 		fondo.anchor_right = 0.5
-		fondo.anchor_top = 0.0
-		fondo.anchor_bottom = 0.0
+		fondo.anchor_top = 0.5
+		fondo.anchor_bottom = 0.5
 		fondo.offset_left = -24
 		fondo.offset_right = 24
-		fondo.offset_top = 0
-		fondo.offset_bottom = 48
+		fondo.offset_top = -24
+		fondo.offset_bottom = 24
 		fondo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		fondo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		fondo.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -236,12 +236,12 @@ func _construir_ui() -> void:
 		icono.name = "Icono"
 		icono.anchor_left = 0.5
 		icono.anchor_right = 0.5
-		icono.anchor_top = 0.0
-		icono.anchor_bottom = 0.0
+		icono.anchor_top = 0.5
+		icono.anchor_bottom = 0.5
 		icono.offset_left = -20
 		icono.offset_right = 20
-		icono.offset_top = 4
-		icono.offset_bottom = 44
+		icono.offset_top = -20
+		icono.offset_bottom = 20
 		icono.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icono.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icono.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -256,36 +256,23 @@ func _construir_ui() -> void:
 		cant.anchor_right = 1.0
 		cant.anchor_bottom = 0.0
 		cant.offset_left = -30
-		cant.offset_top = 1
-		cant.offset_right = -3
-		cant.offset_bottom = 17
+		cant.offset_top = 2
+		cant.offset_right = -4
+		cant.offset_bottom = 18
 		cant.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 		cant.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		cant.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 		cant.add_theme_font_size_override("font_size", 12)
+		cant.add_theme_color_override("font_color", Color(1.0, 0.2, 0.2))
+		cant.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+		cant.add_theme_constant_override("outline_size", 1)
 		cant.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slotc.add_child(cant)
 		cantidades_slot.append(cant)
 
 		var nombre := Label.new()
 		nombre.name = "Nombre"
-		nombre.anchor_left = 0.0
-		nombre.anchor_top = 1.0
-		nombre.anchor_right = 1.0
-		nombre.anchor_bottom = 1.0
-		nombre.offset_left = 0
-		nombre.offset_top = -16
-		nombre.offset_right = 0
-		nombre.offset_bottom = 0
-		nombre.grow_vertical = Control.GROW_DIRECTION_BEGIN
-		nombre.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		nombre.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-		nombre.clip_text = true
-		nombre.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		nombre.add_theme_font_size_override("font_size", 9)
-		nombre.add_theme_color_override("font_color", Color(1.0, 0.2, 0.2))
-		nombre.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
-		nombre.add_theme_constant_override("outline_size", 2)
+		nombre.visible = false
 		nombre.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slotc.add_child(nombre)
 		nombres_slot.append(nombre)
@@ -384,18 +371,24 @@ func _actualizar_inventario() -> void:
 		var slot = inventario.slot(i) if inventario.has_method("slot") else null
 		var sel: bool = inventario.has_method("seleccionar") and i == int(inventario.seleccionado)
 		fondos_slot[i].texture = tex_slot_seleccionado if sel else tex_slot_normal
+		var slotc := fondos_slot[i].get_parent() as Control
 		if slot == null:
 			iconos_objeto[i].texture = null
 			iconos_objeto[i].modulate = Color(1, 1, 1, 0)
 			cantidades_slot[i].text = ""
 			nombres_slot[i].text = ""
+			if slotc != null:
+				slotc.tooltip_text = ""
 		else:
 			var icono := _icono_para_item(String(slot.get("id", "")), String(slot.get("icono", "")))
 			iconos_objeto[i].texture = icono
 			iconos_objeto[i].modulate = Color(1, 1, 1, 1) if icono != null else Color(0.85, 0.75, 0.35, 0.85)
 			var cantidad := int(slot.get("cantidad", 0))
 			cantidades_slot[i].text = str(cantidad) if cantidad > 1 else ""
-			nombres_slot[i].text = String(slot.get("nombre", ""))
+			var nombre_item := String(slot.get("nombre", ""))
+			nombres_slot[i].text = nombre_item
+			if slotc != null:
+				slotc.tooltip_text = nombre_item
 
 
 func _icono_para_item(id: String, ruta: String) -> Texture2D:
@@ -470,7 +463,10 @@ func _guardar_y_salir() -> void:
 	var vida_val = p.vida if "vida" in p else 20
 	var hambre_val = p.hambre if "hambre" in p else 20
 	var rocas_val = mundo.get("rocas_golpeadas") if mundo != null else {}
-	var ok := GestorMundos.guardar_progreso(p.position, inventario, mundo.arbustos_recolectados, vida_val, hambre_val, rocas_val)
+	var rocas_golpes_val = mundo.get("rocas_golpes") if mundo != null else {}
+	var arboles_golpes_val = mundo.get("arboles_golpes") if mundo != null else {}
+	var arboles_talados_val = mundo.get("arboles_talados") if mundo != null else {}
+	var ok := GestorMundos.guardar_progreso(p.position, inventario, mundo.arbustos_recolectados, vida_val, hambre_val, rocas_val, rocas_golpes_val, arboles_golpes_val, arboles_talados_val)
 	if ok:
 		var error := get_tree().change_scene_to_file("res://escenas/interfaz/seleccion_mundos.tscn")
 		if error == OK:

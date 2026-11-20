@@ -9,7 +9,8 @@ var volumen_sonidos: float = 1.0
 var reproductor_musica: AudioStreamPlayer
 var musica_interfaz: AudioStream
 var sfx_caminata_cesped: AudioStream
-var sfx_golpe: AudioStream
+var sfx_golpe_arbol: AudioStream
+var sfx_golpe_roca: AudioStream
 
 
 func _ready() -> void:
@@ -82,7 +83,8 @@ func establecer_volumen_sonidos(v: float) -> void:
 func _cargar_streams() -> void:
 	musica_interfaz = _cargar_stream("res://assets/sonidos/musica_interfaz.mp3", true)
 	sfx_caminata_cesped = _cargar_stream("res://assets/sonidos/caminata_cesped.mp3", true)
-	sfx_golpe = _cargar_stream("res://assets/sonidos/golpes.mp3", false)
+	sfx_golpe_arbol = _cargar_stream("res://assets/sonidos/golpear_arbol.mp3", false)
+	sfx_golpe_roca = _cargar_stream("res://assets/sonidos/golpear_roca.mp3", false)
 
 
 func _cargar_stream(ruta: String, bucle: bool) -> AudioStream:
@@ -156,8 +158,22 @@ func reproducir_sonido(stream: AudioStream, volumen_db: float = 0.0) -> void:
 	p.play()
 
 
-func reproducir_golpe() -> void:
-	reproducir_sonido(sfx_golpe)
+func reproducir_golpe(tipo: String = "") -> void:
+	if tipo == "roca":
+		reproducir_sonido(sfx_golpe_roca)
+	elif tipo == "arbol":
+		reproducir_sonido(sfx_golpe_arbol)
+	else:
+		# Golpe al aire u objetivo genérico: usar sonido de roca por defecto.
+		reproducir_sonido(sfx_golpe_roca if sfx_golpe_roca != null else sfx_golpe_arbol)
+
+
+func reproducir_golpe_arbol() -> void:
+	reproducir_sonido(sfx_golpe_arbol)
+
+
+func reproducir_golpe_roca() -> void:
+	reproducir_sonido(sfx_golpe_roca)
 
 
 func stream_caminata_cesped() -> AudioStream:

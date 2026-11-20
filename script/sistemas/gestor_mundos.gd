@@ -122,7 +122,7 @@ func iniciar_mundo(datos: Dictionary) -> Error:
 	return error
 
 
-func guardar_progreso(posicion: Vector2, inventario = null, arbustos = null, vida = null, hambre = null, rocas_golpeadas = null) -> bool:
+func guardar_progreso(posicion: Vector2, inventario = null, arbustos = null, vida = null, hambre = null, rocas_golpeadas = null, rocas_golpes = null, arboles_golpes = null, arboles_talados = null) -> bool:
 	ultimo_error = ""
 	if mundo_actual.is_empty() or not mundo_actual.get("id") is String:
 		ultimo_error = "No hay un mundo guardado seleccionado."
@@ -153,12 +153,18 @@ func guardar_progreso(posicion: Vector2, inventario = null, arbustos = null, vid
 			progreso["inventario"] = inventario.serializar()
 		else:
 			progreso["inventario"] = inventario.duplicate(true)
-	if arbustos != null or rocas_golpeadas != null:
+	if arbustos != null or rocas_golpeadas != null or rocas_golpes != null or arboles_golpes != null or arboles_talados != null:
 		var cambios: Dictionary = progreso.get("cambios_mundo", {}).duplicate(true)
 		if arbustos != null:
 			cambios["arbustos_recolectados"] = arbustos.duplicate(true)
 		if rocas_golpeadas != null:
 			cambios["rocas_golpeadas"] = rocas_golpeadas.duplicate(true)
+		if rocas_golpes != null:
+			cambios["rocas_golpes"] = rocas_golpes.duplicate(true)
+		if arboles_golpes != null:
+			cambios["arboles_golpes"] = arboles_golpes.duplicate(true)
+		if arboles_talados != null:
+			cambios["arboles_talados"] = arboles_talados.duplicate(true)
 		progreso["cambios_mundo"] = cambios
 	datos["progreso"] = progreso
 	datos["tamano_tile"] = Dimensiones.TILE_SIZE
@@ -249,13 +255,23 @@ func _leer_mundo(ruta: String) -> Dictionary:
 	var arbustos = cambios.get("arbustos_recolectados", {})
 	if not arbustos is Dictionary:
 		cambios["arbustos_recolectados"] = {}
-	var rocas_g = cambios.get("rocas_golpeadas", {})
-	if not rocas_g is Dictionary:
-		cambios["rocas_golpeadas"] = {}
+		arbustos = cambios["arbustos_recolectados"]
 	else:
 		for id in arbustos.keys():
 			if not id is String or arbustos[id] != true:
 				arbustos.erase(id)
+	var rocas_g = cambios.get("rocas_golpeadas", {})
+	if not rocas_g is Dictionary:
+		cambios["rocas_golpeadas"] = {}
+	var rocas_golpes_d = cambios.get("rocas_golpes", {})
+	if not rocas_golpes_d is Dictionary:
+		cambios["rocas_golpes"] = {}
+	var arboles_golpes_d = cambios.get("arboles_golpes", {})
+	if not arboles_golpes_d is Dictionary:
+		cambios["arboles_golpes"] = {}
+	var arboles_talados_d = cambios.get("arboles_talados", {})
+	if not arboles_talados_d is Dictionary:
+		cambios["arboles_talados"] = {}
 	# Valores de supervivencia compatibles con partidas antiguas.
 	var vida_v = jugador.get("vida", 20)
 	jugador["vida"] = clampi(int(vida_v), 0, 20) if (vida_v is int or vida_v is float) else 20
