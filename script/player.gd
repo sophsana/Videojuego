@@ -1,4 +1,3 @@
-
 extends CharacterBody2D
 
 const Dimensiones = preload("res://script/sistemas/dimensiones_mundo.gd")
@@ -35,10 +34,15 @@ var hambre := 20
 
 func _ready() -> void:
 	world = get_parent()
+	if world != null and world.name == "Recursos":
+		world = world.get_parent()
 	_cargar_supervivencia()
 	_actualizar_animacion(Vector2.ZERO)
 	sprite.animation_finished.connect(_terminar_reposo)
 	espera_reposo = randf_range(2.5, 6.0)
+	# La profundidad se resuelve por Y-sort usando la posición de los pies.
+	z_index = 0
+	z_as_relative = true
 
 
 func _physics_process(delta: float) -> void:
@@ -70,7 +74,6 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	wrap_position()
 	_actualizar_reposo(delta, direction)
-	update_depth()
 
 
 func _actualizar_reposo(delta: float, direccion: Vector2) -> void:
@@ -133,22 +136,6 @@ func update_terrain() -> void:
 			terrain_speed = 1.0
 
 
-func update_depth() -> void:
-	# La profundidad se ordena por Y en el mundo, usando la posición de los pies.
-	z_index = 0
-	# Las hojas laterales de reposo usan otra escala y otro punto de apoyo.
-	var apoyo := -3.2 if sprite.animation in ["idle_left", "idle_right"] else -7.0
-	var profundo := false
-	if world != null and world.has_method("get_terrain"):
-		var x := posmod(floori(global_position.x / TILE_SIZE), MAP_SIZE)
-		var y := posmod(floori(global_position.y / TILE_SIZE), MAP_SIZE)
-		var on_rock: bool = world.get_terrain(x, y) == ROCK
-		var por_debajo: bool = world.get_terrain(posmod(x - 1, MAP_SIZE), y) == ROCK or world.get_terrain(posmod(x + 1, MAP_SIZE), y) == ROCK or world.get_terrain(x, posmod(y - 1, MAP_SIZE)) == ROCK or world.get_terrain(x, posmod(y + 1, MAP_SIZE)) == ROCK
-		profundo = on_rock or por_debajo
-	sprite.z_index = -1 if profundo else 0
-	sprite.position.y = apoyo - 3.0 if profundo else apoyo
-
-
 func wrap_position() -> void:
 	var posicion_anterior := global_position
 	global_position.x = fposmod(global_position.x, WORLD_SIZE)
@@ -171,7 +158,7 @@ func _actualizar_animacion(direccion: Vector2) -> void:
 	var animacion := ("walk_" if direccion != Vector2.ZERO else "idle_") + ultima_direccion
 	# La hoja de reposo tiene celdas 270×360; las de caminata, 180×240.
 	sprite.scale = Vector2(0.133333, 0.133333) if animacion in ["idle_left", "idle_right"] else Vector2(0.2, 0.2)
-	# Alinear los píxeles inferiores de ambas hojas sobre el mismo punto de apoyo.
+	# Alinear los píxeles inferiores de ambas hojas sobre el mismo punto de apoyo (pies/base).
 	sprite.position.y = -3.2 if animacion in ["idle_left", "idle_right"] else -7.0
 	if sprite.animation != animacion:
 		sprite.animation = animacion

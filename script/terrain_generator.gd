@@ -32,6 +32,10 @@ const GRASS: int = 3
 const DIRT: int = 4
 const ROCK: int = 5
 
+# Margen pequeño para que el cambio de profundidad ocurra al pasar ligeramente
+# por encima de la base visible (escala 32x32). Se aplica al eje de ordenación.
+const MARGEN_PROFUNDIDAD_BASE := 3.0
+
 @export var world_seed: int = 12345
 @export var camera_speed: float = 500.0
 
@@ -100,10 +104,12 @@ func _ready() -> void:
 	await generate_resources()
 	await create_resource_copies()
 	create_player()
-	if get_node_or_null("Player") == null:
+	var jugador := _obtener_jugador()
+	if jugador == null:
 		push_error("No se pudo preparar el jugador.")
 		generacion_fallida.emit("No se pudo preparar el jugador.")
 		return
+	_colocar_jugador_en_posicion_segura(jugador)
 	setup_camera()
 	await get_tree().process_frame
 	_actualizar_animaciones_visibles()
@@ -129,9 +135,12 @@ func create_resource_copies() -> void:
 	for child in resources_layer.get_children():
 		if child is Node2D and not child.name.ends_with("_VisualCopy") and not child.name.ends_with("_Emision"):
 			var original := child as Node2D
+			if not _es_recurso_visual(original):
+				continue
+			var pos_base := _posicion_base_recurso(original)
 			# Solo los recursos cercanos a un borde pueden ser visibles desde
 			# el otro lado con el zoom actual; se evita duplicar todo el bosque.
-			if original.position.x < margen or original.position.x > WORLD_SIZE - margen or original.position.y < margen or original.position.y > WORLD_SIZE - margen:
+			if pos_base.x < margen or pos_base.x > WORLD_SIZE - margen or pos_base.y < margen or pos_base.y > WORLD_SIZE - margen:
 				original_resources.append(original)
 
 	var total := original_resources.size() * 8
@@ -151,7 +160,8 @@ func create_resource_copies() -> void:
 				if completado % 100 == 0:
 					avance_generacion.emit("copias_recursos", completado, maxi(total, 1))
 					await get_tree().process_frame
-				if (offset_x == -1 and original.position.x < WORLD_SIZE - margen) or (offset_x == 1 and original.position.x > margen) or (offset_y == -1 and original.position.y < WORLD_SIZE - margen) or (offset_y == 1 and original.position.y > margen):
+				var pos_base := _posicion_base_recurso(original)
+				if (offset_x == -1 and pos_base.x < WORLD_SIZE - margen) or (offset_x == 1 and pos_base.x > margen) or (offset_y == -1 and pos_base.y < WORLD_SIZE - margen) or (offset_y == 1 and pos_base.y > margen):
 					continue
 				var copy := _copiar_recurso(original)
 
@@ -161,11 +171,12 @@ func create_resource_copies() -> void:
 				copy.position = original.position + offset
 				copy.name = original.name + "_VisualCopy"
 				resources_layer.add_child(copy)
-				if copy is AnimatedSprite2D:
-					_registrar_animacion(copy)
+				_registrar_animaciones_recurso(copy)
 
-				if original.has_meta("arbusto_id"):
-					var arbusto_id: String = original.get_meta("arbusto_id")
+				var arbusto_id := _id_arbusto_recurso(original)
+				if not arbusto_id.is_empty():
+					if not visuales_arbustos.has(arbusto_id):
+						visuales_arbustos[arbusto_id] = []
 					visuales_arbustos[arbusto_id].append(copy)
 	avance_generacion.emit("copias_recursos", 1, 1)
 	await get_tree().process_frame
@@ -231,14 +242,30 @@ func place_rock(tile_center: Vector2) -> void:
 	var tamano := textura.get_size() * escala
 	if not _reservar_espacio(tile_center, tamano, true):
 		return
+	var contenedor := Node2D.new()
+	contenedor.name = "Roca"
+	contenedor.position = tile_center + Vector2(0, -MARGEN_PROFUNDIDAD_BASE)
+	contenedor.set_meta("base_y", tile_center.y)
 	var sprite := Sprite2D.new()
-	sprite.name = "SpriteNode2D"
+	sprite.name = "Sprite"
 	sprite.texture = textura
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	sprite.scale = Vector2.ONE * escala
-	sprite.position = tile_center
+	sprite.position = Vector2(0, MARGEN_PROFUNDIDAD_BASE)
 	sprite.offset.y = -textura.get_height() / 2.0
-	resources_layer.add_child(sprite)
+	contenedor.add_child(sprite)
+	var cuerpo := StaticBody2D.new()
+	cuerpo.name = "Cuerpo"
+	cuerpo.position = Vector2(0, MARGEN_PROFUNDIDAD_BASE)
+	contenedor.add_child(cuerpo)
+	var colision := CollisionShape2D.new()
+	var forma := RectangleShape2D.new()
+	# Colisión en la zona sólida de la roca, ajustada al tamaño.
+	forma.size = Vector2(maxf(6.0, tamano.x * 0.62), maxf(4.0, tamano.y * 0.26))
+	colision.shape = forma
+	colision.position = Vector2(0, -forma.size.y * 0.5)
+	cuerpo.add_child(colision)
+	resources_layer.add_child(contenedor)
 
 
 func _preparar_recursos() -> void:
@@ -293,26 +320,100 @@ func _colocar_animado(tipo: String, posicion: Vector2, ancho: float, arbusto_id:
 	var tamano := tamano_original * escala
 	if not _reservar_espacio(posicion, tamano, true):
 		return
+	var contenedor := Node2D.new()
+	contenedor.name = tipo
+	contenedor.position = posicion + Vector2(0, -MARGEN_PROFUNDIDAD_BASE)
+	contenedor.set_meta("base_y", posicion.y)
+	contenedor.set_meta("tipo_recurso", tipo)
 	var sprite := AnimatedSprite2D.new()
-	sprite.name = "SpriteNode2D"
+	sprite.name = "Sprite"
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var vacio: SpriteFrames = sprites_recursos.get(tipo + "_vacio", frames)
 	sprite.sprite_frames = vacio if not arbusto_id.is_empty() and arbustos_recolectados.has(arbusto_id) else frames
 	sprite.scale = Vector2.ONE * escala
-	sprite.position = posicion
+	sprite.position = Vector2(0, MARGEN_PROFUNDIDAD_BASE)
 	sprite.offset.y = -tamano_original.y / 2.0
-	resources_layer.add_child(sprite)
+	contenedor.add_child(sprite)
+	if tipo.begins_with("arbol_"):
+		var cuerpo := StaticBody2D.new()
+		cuerpo.name = "Cuerpo"
+		cuerpo.position = Vector2(0, MARGEN_PROFUNDIDAD_BASE)
+		contenedor.add_child(cuerpo)
+		var colision := CollisionShape2D.new()
+		var forma := RectangleShape2D.new()
+		# Colisión en el tronco/base, no en la copa.
+		forma.size = Vector2(maxf(6.0, tamano.x * 0.18), maxf(5.0, tamano.y * 0.12))
+		colision.shape = forma
+		colision.position = Vector2(0, -forma.size.y * 0.5)
+		cuerpo.add_child(colision)
+	resources_layer.add_child(contenedor)
 	_registrar_animacion(sprite)
 	if not arbusto_id.is_empty():
+		contenedor.set_meta("arbusto_id", arbusto_id)
+		contenedor.set_meta("tipo_arbusto", tipo)
 		sprite.set_meta("arbusto_id", arbusto_id)
 		sprite.set_meta("tipo_arbusto", tipo)
-		visuales_arbustos[arbusto_id] = [sprite]
+		if not visuales_arbustos.has(arbusto_id):
+			visuales_arbustos[arbusto_id] = []
+		visuales_arbustos[arbusto_id].append(contenedor)
 		var celda := Vector2i(floori(posicion.x / TILE_SIZE), floori(posicion.y / TILE_SIZE))
 		arbustos_por_celda[celda] = arbusto_id
 
 
 func _copiar_recurso(original: Node2D) -> Node2D:
 	return original.duplicate() as Node2D
+
+
+func _es_recurso_visual(nodo: Node) -> bool:
+	return nodo is Node2D and (nodo.has_meta("base_y") or nodo.has_meta("tipo_recurso") or nodo.has_meta("arbusto_id") or String(nodo.name).begins_with("Roca") or String(nodo.name).begins_with("arbol_") or String(nodo.name).begins_with("arbusto_"))
+
+
+func _posicion_base_recurso(recurso: Node2D) -> Vector2:
+	if recurso.has_meta("base_y"):
+		return Vector2(recurso.position.x, float(recurso.get_meta("base_y")))
+	return recurso.position + Vector2(0, MARGEN_PROFUNDIDAD_BASE)
+
+
+func _id_arbusto_recurso(recurso: Node) -> String:
+	if recurso.has_meta("arbusto_id"):
+		return String(recurso.get_meta("arbusto_id"))
+	var sprite := _sprite_animado_recurso(recurso)
+	if sprite != null and sprite.has_meta("arbusto_id"):
+		return String(sprite.get_meta("arbusto_id"))
+	return ""
+
+
+func _sprite_animado_recurso(recurso: Node) -> AnimatedSprite2D:
+	if recurso == null:
+		return null
+	if recurso is AnimatedSprite2D:
+		return recurso as AnimatedSprite2D
+	if recurso.has_node("Sprite"):
+		var n := recurso.get_node("Sprite")
+		if n is AnimatedSprite2D:
+			return n as AnimatedSprite2D
+	for child in recurso.get_children():
+		if child is AnimatedSprite2D:
+			return child as AnimatedSprite2D
+	return null
+
+
+func _sprites_animados_recurso(recurso: Node) -> Array[AnimatedSprite2D]:
+	var resultado: Array[AnimatedSprite2D] = []
+	if recurso == null:
+		return resultado
+	if recurso is AnimatedSprite2D:
+		resultado.append(recurso as AnimatedSprite2D)
+		return resultado
+	for child in recurso.get_children():
+		if child is AnimatedSprite2D:
+			resultado.append(child as AnimatedSprite2D)
+	return resultado
+
+
+func _registrar_animaciones_recurso(recurso: Node) -> void:
+	for sprite in _sprites_animados_recurso(recurso):
+		_registrar_animacion(sprite)
 
 
 
@@ -331,8 +432,11 @@ func recolectar_cercano(posicion: Vector2, alcance: float = 60.0) -> bool:
 			var visuales: Array = visuales_arbustos.get(id, [])
 			if visuales.is_empty():
 				continue
-			var original: Node2D = visuales[0]
-			var delta := (original.position - posicion).abs()
+			var original: Node2D = visuales[0] as Node2D
+			if original == null:
+				continue
+			var pos_base := _posicion_base_recurso(original)
+			var delta := (pos_base - posicion).abs()
 			delta.x = minf(fposmod(delta.x, WORLD_SIZE), WORLD_SIZE - fposmod(delta.x, WORLD_SIZE))
 			delta.y = minf(fposmod(delta.y, WORLD_SIZE), WORLD_SIZE - fposmod(delta.y, WORLD_SIZE))
 			if delta.length() <= distancia:
@@ -343,7 +447,11 @@ func recolectar_cercano(posicion: Vector2, alcance: float = 60.0) -> bool:
 	var visuales_objetivo: Array = visuales_arbustos.get(mas_cercano, [])
 	if visuales_objetivo.is_empty():
 		return false
-	var tipo: String = String((visuales_objetivo[0] as Node2D).get_meta("tipo_arbusto", "arbusto_1"))
+	var nodo_ref: Node = visuales_objetivo[0]
+	var tipo: String = String(nodo_ref.get_meta("tipo_arbusto", "arbusto_1"))
+	var sprite_ref := _sprite_animado_recurso(nodo_ref)
+	if sprite_ref != null and sprite_ref.has_meta("tipo_arbusto"):
+		tipo = String(sprite_ref.get_meta("tipo_arbusto", tipo))
 	var indice := int(tipo.trim_prefix("arbusto_"))
 	var datos: Dictionary = Catalogo.ARBUSTOS[clampi(indice, 0, Catalogo.ARBUSTOS.size() - 1)]
 	var cantidad := int(datos.get("frutos", 2))
@@ -363,15 +471,23 @@ func recolectar_cercano(posicion: Vector2, alcance: float = 60.0) -> bool:
 	var interfaz := get_node_or_null("InterfazMundo")
 	if interfaz != null and interfaz.has_method("actualizar_inventario"):
 		interfaz.actualizar_inventario()
-	for recurso: Node2D in visuales_objetivo:
-		var sprite := recurso as AnimatedSprite2D
+	for recurso in visuales_objetivo:
+		if recurso == null or not is_instance_valid(recurso):
+			continue
+		var sprite := _sprite_animado_recurso(recurso)
 		if sprite == null:
 			continue
+		var tipo_sprite := String(recurso.get_meta("tipo_arbusto", tipo))
+		if sprite.has_meta("tipo_arbusto"):
+			tipo_sprite = String(sprite.get_meta("tipo_arbusto", tipo_sprite))
 		var estaba_activo := sprite.is_playing()
-		var vacio: SpriteFrames = sprites_recursos.get(tipo + "_vacio", sprite.sprite_frames)
+		var vacio: SpriteFrames = sprites_recursos.get(tipo_sprite + "_vacio", sprite.sprite_frames)
 		sprite.sprite_frames = vacio
+		sprite.frame = 0
 		if estaba_activo:
 			sprite.play("viento")
+		else:
+			sprite.stop()
 	return true
 
 
@@ -838,8 +954,17 @@ func _margen_copias() -> float:
 
 
 
+func _obtener_jugador() -> Node2D:
+	var jugador := get_node_or_null("Recursos/Player") as Node2D
+	if jugador == null:
+		jugador = find_child("Player", true, false) as Node2D
+	return jugador
+
+
 func setup_camera() -> void:
-	var player: Node2D = get_node("Player")
+	var player := _obtener_jugador()
+	if player == null:
+		return
 
 	world_camera = Camera2D.new()
 	world_camera.name = "WorldCamera"
@@ -852,8 +977,7 @@ func setup_camera() -> void:
 
 
 func wrap_camera_position() -> void:
-	var player: Node2D = get_node_or_null("Player")
-
+	var player := _obtener_jugador()
 	if player == null:
 		return
 
@@ -877,15 +1001,73 @@ func create_player() -> CharacterBody2D:
 		var tamano_anterior: int = int(GestorMundos.mundo_actual.get("tamano_tile", Dimensiones.TILE_SIZE_ANTERIOR))
 		player.position = Vector2(posicion.x, posicion.y) * (float(TILE_SIZE) / tamano_anterior)
 
-	add_child(player)
+	if resources_layer != null:
+		resources_layer.add_child(player)
+	else:
+		add_child(player)
 	player.set_physics_process(false)
 	return player
 
 
+func _colocar_jugador_en_posicion_segura(player: Node2D) -> void:
+	if player == null or resources_layer == null:
+		return
+	if not _posicion_jugador_bloqueada(player.global_position):
+		return
+	var origen := player.global_position
+	for radio in range(1, 24):
+		for dy in range(-radio, radio + 1):
+			for dx in range(-radio, radio + 1):
+				if abs(dx) != radio and abs(dy) != radio:
+					continue
+				var candidato := origen + Vector2(dx, dy) * float(TILE_SIZE)
+				candidato.x = fposmod(candidato.x, WORLD_SIZE)
+				candidato.y = fposmod(candidato.y, WORLD_SIZE)
+				if not _posicion_jugador_bloqueada(candidato):
+					player.global_position = candidato
+					return
+	# Último recurso: centro del mundo si es viable.
+	var centro := Vector2(WORLD_SIZE / 2.0, WORLD_SIZE / 2.0)
+	if not _posicion_jugador_bloqueada(centro):
+		player.global_position = centro
+
+
+func _posicion_jugador_bloqueada(pos_global: Vector2) -> bool:
+	if resources_layer == null:
+		return false
+	for child in resources_layer.get_children():
+		if child == null or not is_instance_valid(child):
+			continue
+		if child.name == "Player" or child.is_in_group("player"):
+			continue
+		if not child.has_node("Cuerpo"):
+			continue
+		var cuerpo := child.get_node("Cuerpo")
+		for c in cuerpo.get_children():
+			if not (c is CollisionShape2D):
+				continue
+			var shape := (c as CollisionShape2D).shape
+			if shape is RectangleShape2D:
+				var rect_shape := shape as RectangleShape2D
+				var half := rect_shape.size * 0.5 + Vector2(4, 4)
+				var centro_col := (c as CollisionShape2D).global_position
+				if absf(pos_global.x - centro_col.x) <= half.x and absf(pos_global.y - centro_col.y) <= half.y:
+					return true
+			elif shape is CircleShape2D:
+				var radio := (shape as CircleShape2D).radius + 4.0
+				if pos_global.distance_to((c as CollisionShape2D).global_position) <= radio:
+					return true
+	return false
+
+
 func activar_juego() -> void:
 	if generacion_lista:
-		$Player.set_physics_process(true)
-		$InterfazMundo.visible = true
+		var jugador := _obtener_jugador()
+		if jugador != null:
+			jugador.set_physics_process(true)
+		var interfaz := get_node_or_null("InterfazMundo")
+		if interfaz != null:
+			interfaz.visible = true
 
 
 func _crear_interfaz_mundo() -> void:

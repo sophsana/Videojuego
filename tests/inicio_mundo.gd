@@ -55,10 +55,17 @@ func probar() -> void:
 	var mundo = current_scene
 	comprobar(mundo.world_seed == 7654321 and mundo.generacion_lista, "semilla y generación")
 	comprobar(not fondos.visible, "fondo oculto")
-	comprobar(mundo.get_node("Player/WorldCamera").is_current(), "cámara activa tras la transición")
+	var camara_inicio = mundo.get_node_or_null("Player/WorldCamera")
+	if camara_inicio == null:
+		camara_inicio = mundo.get_node_or_null("Recursos/Player/WorldCamera")
+	if camara_inicio == null:
+		camara_inicio = mundo.find_child("WorldCamera", true, false)
+	comprobar(camara_inicio != null and camara_inicio.is_current(), "cámara activa tras la transición")
 	var terreno: int = mundo.get_terrain(45, 27)
 	var id: String = gestor.mundo_actual.id
-	var jugador: CharacterBody2D = mundo.get_node("Player")
+	var jugador: CharacterBody2D = mundo.get_node_or_null("Player")
+	if jugador == null:
+		jugador = mundo.find_child("Player", true, false) as CharacterBody2D
 	jugador.position = Vector2(1234, 2345)
 	jugador.set_physics_process(false)
 	mundo.get_node("InterfazMundo")._guardar_y_salir()
@@ -75,7 +82,10 @@ func probar() -> void:
 		if await esperar_escena("res://escenas/mundo.tscn"):
 			mundo = current_scene
 			comprobar(mundo.get_terrain(45, 27) == terreno, "terreno reproducido")
-			comprobar(mundo.get_node("Player").position.distance_to(Vector2(1234, 2345)) < 0.1, "posición recuperada")
+			var jugador_rec = mundo.get_node_or_null("Player")
+			if jugador_rec == null:
+				jugador_rec = mundo.find_child("Player", true, false)
+			comprobar(jugador_rec != null and jugador_rec.position.distance_to(Vector2(1234, 2345)) < 0.1, "posición recuperada")
 		else:
 			comprobar(false, "recargar mundo")
 	DirAccess.remove_absolute("user://mundos".path_join(id + ".json"))

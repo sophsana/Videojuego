@@ -109,16 +109,20 @@ func probar() -> void:
 	comprobar(mundo.inventario.contar("fruto_alienigena") == 2, "recolección da 2 frutos")
 	mundo.inventario.cargar({})
 	mundo.arbustos_recolectados.clear()
+	mundo.visuales_arbustos.clear()
+	mundo.arbustos_por_celda.clear()
 	mundo._colocar_animado("arbusto_1", Vector2(100, 100), 40, "3_3")
-	var copia: Node2D = mundo.visuales_arbustos["3_3"][0].duplicate()
+	var original_visual: Node = mundo.visuales_arbustos["3_3"][0]
+	var copia: Node2D = original_visual.duplicate() as Node2D
+	mundo.resources_layer.add_child(copia)
 	mundo.visuales_arbustos["3_3"].append(copia)
-	var copia_activa := copia as AnimatedSprite2D
+	var copia_activa: AnimatedSprite2D = mundo._sprite_animado_recurso(copia)
 	copia_activa.play("viento")
 	comprobar(mundo.recolectar_cercano(Vector2(110, 100)), "recolección")
 	comprobar(not mundo.recolectar_cercano(Vector2(110, 100)), "sin duplicación")
 	comprobar(mundo.inventario.contar("fruto_alienigena") == 2, "inventario 2 frutos")
 	comprobar(mundo.arbustos_recolectados.has("3_3"), "identificador estable")
-	comprobar((copia as AnimatedSprite2D).sprite_frames == mundo.sprites_recursos.arbusto_1_vacio, "copia actualizada sin frutos")
+	comprobar(mundo._sprite_animado_recurso(copia).sprite_frames == mundo.sprites_recursos.arbusto_1_vacio, "copia actualizada sin frutos")
 	comprobar(copia_activa.is_playing(), "animación de copia continúa")
 	# Arbusto no cosechable (arbusto_animado1) no debe reaccionar a F.
 	mundo._colocar_animado("arbusto_0", Vector2(200, 200), 44, "")
@@ -154,7 +158,7 @@ func probar() -> void:
 	reabierto.arbustos_recolectados = cargado.progreso.cambios_mundo.arbustos_recolectados.duplicate(true)
 	reabierto._colocar_animado("arbusto_1", Vector2(100, 100), 40, "3_3")
 	comprobar(not reabierto.recolectar_cercano(Vector2(100, 100)), "no recolectar tras recarga")
-	comprobar(reabierto.visuales_arbustos["3_3"][0].sprite_frames == reabierto.sprites_recursos.arbusto_1_vacio, "arbusto cosechado permanece sin frutos")
+	comprobar(reabierto._sprite_animado_recurso(reabierto.visuales_arbustos["3_3"][0]).sprite_frames == reabierto.sprites_recursos.arbusto_1_vacio, "arbusto cosechado permanece sin frutos")
 	reabierto.free()
 	copia.free()
 	mundo.free()

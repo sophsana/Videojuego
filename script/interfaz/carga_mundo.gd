@@ -116,6 +116,14 @@ func _terminar() -> void:
 	mundo.reparent(get_tree().root)
 	mundo.visible = true
 	var camara := mundo.get_node_or_null("Player/WorldCamera") as Camera2D
+	if camara == null:
+		camara = mundo.get_node_or_null("Recursos/Player/WorldCamera") as Camera2D
+	if camara == null and mundo.has_method("_obtener_jugador"):
+		var j = mundo._obtener_jugador()
+		if j != null:
+			camara = j.get_node_or_null("WorldCamera") as Camera2D
+	if camara == null:
+		camara = mundo.find_child("WorldCamera", true, false) as Camera2D
 	if camara != null:
 		camara.make_current()
 		camara.reset_smoothing()

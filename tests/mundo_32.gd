@@ -44,8 +44,11 @@ func probar() -> void:
 		comprobar(sprite.flip_h == (nombre == "right"), "inversión " + nombre)
 		player._actualizar_animacion(Vector2.ZERO)
 		comprobar(sprite.animation == "idle_" + nombre, "reposo " + nombre)
-	player.update_depth()
-	comprobar(is_equal_approx(sprite.position.y, -3.2), "apoyo lateral en reposo")
+	# El apoyo visual del sprite se mantiene alineado a la base (pies) del personaje.
+	if sprite.animation in ["idle_left", "idle_right"]:
+		comprobar(is_equal_approx(sprite.position.y, -3.2), "apoyo lateral en reposo")
+	else:
+		comprobar(is_equal_approx(sprite.position.y, -7.0), "apoyo frontal/trasero en reposo")
 	var mundo_rock = load("res://escenas/mundo.tscn").instantiate()
 	mundo_rock.world_seed = 123
 	mundo_rock.setup_noise()
@@ -64,9 +67,10 @@ func probar() -> void:
 	if mundo_rock_player != null:
 		mundo_rock_player.world = mundo_rock
 		mundo_rock_player.sprite = mundo_rock_player.get_node("AnimatedSprite2D") as AnimatedSprite2D
-		mundo_rock_player.update_depth()
+		mundo_rock_player._actualizar_animacion(Vector2.ZERO)
 		var mundo_rock_sprite = mundo_rock_player.get_node("AnimatedSprite2D") as AnimatedSprite2D
-		comprobar(mundo_rock_sprite.z_index == -1 and mundo_rock_sprite.position.y == -10.0, "sobrepone al jugador tras roca")
+		# Profundidad por Y-sort/base: sin hacks de z_index en el sprite del jugador.
+		comprobar(mundo_rock_player.z_index == 0 and mundo_rock_sprite.z_index == 0, "profundidad del jugador por base/Y-sort")
 		comprobar(mundo_rock.terrain_layer.z_index == -2, "terreno detrás de recursos y jugador")
 	mundo_rock.free()
 
@@ -107,7 +111,10 @@ func probar() -> void:
 	comprobar(otro.get_terrain(42, 20) == terreno, "semilla reproducible")
 	otro.free()
 	mundo.create_player()
-	comprobar(mundo.get_node("Player").position == Vector2(246, 912), "posición antigua escalada")
+	var jugador_m32 = mundo.get_node_or_null("Player")
+	if jugador_m32 == null:
+		jugador_m32 = mundo.find_child("Player", true, false)
+	comprobar(jugador_m32 != null and jugador_m32.position == Vector2(246, 912), "posición antigua escalada")
 	comprobar(gestor.guardar_progreso(Vector2(6000, 7000)), "guardar coordenadas nuevas")
 	var nuevo: Dictionary = gestor._leer_mundo(ruta)
 	comprobar(nuevo.get("tamano_tile") == 32 and nuevo.progreso.jugador.posicion.x == 6000, "formato nuevo")

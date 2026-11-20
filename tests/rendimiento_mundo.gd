@@ -45,7 +45,23 @@ func medir() -> void:
 	var animados := 0
 	var animados_activos := 0
 	for recurso in mundo.resources_layer.get_children():
+		if recurso == null or not is_instance_valid(recurso):
+			continue
+		if recurso.name == "Player" or String(recurso.name).ends_with("_Emision"):
+			continue
 		var sprite := recurso as AnimatedSprite2D
+		if sprite == null and recurso.has_method("_sprite_animado_recurso"):
+			sprite = recurso._sprite_animado_recurso(recurso)
+		if sprite == null and recurso.has_node("Sprite"):
+			var n = recurso.get_node("Sprite")
+			if n is AnimatedSprite2D:
+				sprite = n
+		# Recursos animados (árboles/arbustos) tienen AnimatedSprite2D hijo o son AnimatedSprite2D.
+		if sprite == null:
+			for child in recurso.get_children():
+				if child is AnimatedSprite2D:
+					sprite = child
+					break
 		if sprite != null:
 			animados += 1
 			if sprite.is_playing():
