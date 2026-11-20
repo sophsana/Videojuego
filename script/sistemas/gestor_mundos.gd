@@ -97,7 +97,8 @@ func crear_mundo(nombre: String, semilla: int, dificultad: String) -> Dictionary
 
 
 func iniciar_mundo(datos: Dictionary) -> Error:
-	if datos.get("tamano_tile", Dimensiones.TILE_SIZE_ANTERIOR) == Dimensiones.TILE_SIZE_ANTERIOR and not datos.get("progreso", {}).get("cambios_mundo", {}).is_empty():
+	var cambios: Dictionary = datos.get("progreso", {}).get("cambios_mundo", {})
+	if datos.get("tamano_tile", Dimensiones.TILE_SIZE_ANTERIOR) == Dimensiones.TILE_SIZE_ANTERIOR and not cambios.is_empty() and cambios != {"arbustos_recolectados": {}}:
 		ultimo_error = "Este mundo antiguo contiene cambios que no se pueden migrar automáticamente."
 		return ERR_INVALID_DATA
 	mundo_actual = datos.duplicate(true)
@@ -108,7 +109,7 @@ func iniciar_mundo(datos: Dictionary) -> Error:
 	return error
 
 
-func guardar_progreso(posicion: Vector2) -> bool:
+func guardar_progreso(posicion: Vector2, inventario = null, arbustos = null) -> bool:
 	ultimo_error = ""
 	if mundo_actual.is_empty() or not mundo_actual.get("id") is String:
 		ultimo_error = "No hay un mundo guardado seleccionado."
@@ -128,6 +129,10 @@ func guardar_progreso(posicion: Vector2) -> bool:
 	progreso["jugador"] = {"posicion": {"x": posicion.x, "y": posicion.y}}
 	if not progreso.has("cambios_mundo"):
 		progreso["cambios_mundo"] = {}
+	if inventario != null:
+		progreso["inventario"] = inventario.duplicate(true)
+	if arbustos != null:
+		progreso["cambios_mundo"]["arbustos_recolectados"] = arbustos.duplicate(true)
 	datos["progreso"] = progreso
 	datos["tamano_tile"] = Dimensiones.TILE_SIZE
 	datos["fecha_ultimo_guardado"] = Time.get_datetime_string_from_system()
@@ -191,6 +196,20 @@ func _leer_mundo(ruta: String) -> Dictionary:
 	var jugador = progreso.get("jugador", {})
 	if not jugador is Dictionary or not progreso.get("cambios_mundo", {}) is Dictionary:
 		return {}
+	var inventario = progreso.get("inventario", {})
+	var arbustos = progreso.get("cambios_mundo", {}).get("arbustos_recolectados", {})
+	if not inventario is Dictionary or not arbustos is Dictionary:
+		return {}
+	for id in inventario:
+		var objeto = inventario[id]
+		if not id is String or not objeto is Dictionary or objeto.get("id") != id or not objeto.get("nombre") is String:
+			return {}
+		var cantidad = objeto.get("cantidad")
+		if not (cantidad is int or cantidad is float) or cantidad < 0 or cantidad != floor(float(cantidad)):
+			return {}
+	for id in arbustos:
+		if not id is String or arbustos[id] != true:
+			return {}
 	var tamano = datos.get("tamano_tile", Dimensiones.TILE_SIZE_ANTERIOR)
 	if not (tamano is int or tamano is float) or (tamano != Dimensiones.TILE_SIZE_ANTERIOR and tamano != Dimensiones.TILE_SIZE):
 		return {}

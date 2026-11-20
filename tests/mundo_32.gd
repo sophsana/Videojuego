@@ -29,6 +29,11 @@ func probar() -> void:
 		comprobar(sprite.flip_h == (nombre == "right"), "inversión " + nombre)
 		player._actualizar_animacion(Vector2.ZERO)
 		comprobar(sprite.animation == "idle_" + nombre, "reposo " + nombre)
+	# Las hojas lateral de caminata y reposo tienen diferentes márgenes transparentes.
+	var pie_caminando := -7.0 + (226.0 - 120.0) * 0.2
+	var pies_reposo := [-3.2 + (310.0 - 180.0) * (2.0 / 15.0), -3.2 + (312.0 - 180.0) * (2.0 / 15.0)]
+	for pie in pies_reposo:
+		comprobar(absf(pie - pie_caminando) < 0.6, "alineación de los pies")
 	player.global_position = Vector2(-1, 8193)
 	player.wrap_position()
 	comprobar(player.global_position == Vector2(8191, 1), "wrap")
@@ -50,7 +55,7 @@ func probar() -> void:
 	mundo.setup_terrain()
 	comprobar(mundo.terrain_layer.tile_set.tile_size == Vector2i(32, 32), "tileset 32")
 	var fuente: TileSetAtlasSource = mundo.terrain_layer.tile_set.get_source(0)
-	comprobar(fuente.get_tiles_count() == 9, "variantes del pasto")
+	comprobar(fuente.get_tiles_count() == mundo.ATLAS_CANTIDAD, "variantes del terreno")
 	var terreno: int = mundo.get_terrain(42, 20)
 	var otro = load("res://escenas/mundo.tscn").instantiate()
 	otro.world_seed = 123

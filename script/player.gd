@@ -30,6 +30,8 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if Input.is_action_just_pressed("interactuar") and world.has_method("recolectar_cercano"):
+		world.recolectar_cercano(global_position)
 	move_and_slide()
 	wrap_position()
 	update_terrain()
@@ -37,8 +39,8 @@ func _physics_process(delta: float) -> void:
 	var direction: Vector2 = Input.get_vector(
 		"ui_left",
 		"ui_right",
-			"ui_up",
-			"ui_down"
+		"ui_up",
+		"ui_down"
 	)
 
 	var target_velocity: Vector2 = direction * walk_speed * terrain_speed
@@ -120,6 +122,7 @@ func _actualizar_animacion(direccion: Vector2) -> void:
 	var animacion := ("walk_" if direccion != Vector2.ZERO else "idle_") + ultima_direccion
 	# La hoja de reposo tiene celdas 270×360; las de caminata, 180×240.
 	sprite.scale = Vector2(0.133333, 0.133333) if animacion in ["idle_left", "idle_right"] else Vector2(0.2, 0.2)
-	sprite.position.y = -14.0 if animacion in ["idle_left", "idle_right"] else -7.0
+	# Alinear los píxeles inferiores de ambas hojas sobre el mismo punto de apoyo.
+	sprite.position.y = -3.2 if animacion in ["idle_left", "idle_right"] else -7.0
 	if sprite.animation != animacion or not sprite.is_playing():
 		sprite.play(animacion)

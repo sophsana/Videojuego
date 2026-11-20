@@ -43,9 +43,9 @@ independiente del nombre. «Guardar y salir» guarda la posición del jugador y 
 fecha del último guardado mediante un archivo temporal antes de reemplazar el
 anterior. Los mundos antiguos sin posición siguen siendo compatibles. Al volver
 a jugar se reconstruye el terreno a partir de la semilla y se restaura la
-posición. **No es un guardado completo**: no se recuperan cambios del terreno,
-recursos ni criaturas; todavía no hay inventario persistente. Existe un campo
-reservado para cambios futuros. La dificultad se guarda, pero sus ajustes son
+posición. El inventario de frutos y los arbustos recolectados también se
+guardan. **No es un guardado completo**: no se recuperan cambios generales del
+terreno ni criaturas. La dificultad se guarda, pero sus ajustes son
 marcadores pendientes de balance y no modifican las mecánicas actuales.
 
 El mundo tiene 256 × 256 baldosas de 32 píxeles (8192 × 8192). Las partidas
@@ -54,6 +54,16 @@ duplica al entrar, sin alterar el archivo hasta guardar. Los guardados antiguos
 con cambios de mundo no vacíos se conservan, pero no se migran automáticamente.
 El terreno lógico se reconstruye con la misma semilla; las posiciones de recursos
 procedurales pueden cambiar por la escala y los ajustes de superposición.
+
+Los arbustos con frutos se recolectan con F a corta distancia. Su identificador
+deriva de la baldosa y se comparte entre las copias visuales. Los frutos y el
+estado de los arbustos se conservan al guardar y salir; no se regeneran.
+Las costas utilizan vecinos cardinales y rotaciones de la hoja con agua a la
+derecha; en esquinas o canales ambiguos se conserva la baldosa base. El mar (seis fotogramas) y
+la orilla (cuatro) comparten una fase de doce pasos y un único atlas animado.
+Los sprites de terreno se componen sobre una base opaca, sin cambiar la cuadrícula.
+Las hojas proporcionadas no son tiles continuos: pueden quedar uniones visuales,
+especialmente en esquinas o en los bordes decorativos, pendientes de revisión.
 
 La carga utiliza `ResourceLoader` asíncrono y genera nodos en el hilo principal
 por lotes. El porcentaje es una ponderación de trabajo completado, no tiempo
