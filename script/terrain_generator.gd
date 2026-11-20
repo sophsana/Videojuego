@@ -115,6 +115,7 @@ func _ready() -> void:
 		generacion_fallida.emit("No se pudo preparar el jugador.")
 		return
 	_colocar_jugador_en_posicion_segura(jugador)
+	_colocar_nave_destrozada_cerca(jugador.global_position)
 	setup_camera()
 	await get_tree().process_frame
 	_actualizar_animaciones_visibles()
@@ -417,6 +418,118 @@ func _id_arbusto_recurso(recurso: Node) -> String:
 	if sprite != null and sprite.has_meta("arbusto_id"):
 		return String(sprite.get_meta("arbusto_id"))
 	return ""
+
+
+func _colocar_nave_destrozada_cerca(posicion_jugador: Vector2) -> void:
+	if resources_layer == null:
+		return
+	var textura := load("res://assets/recursos/nave_destrozada.png") as Texture2D
+	if textura == null:
+		return
+	var ancho_deseado := 96.0
+	var escala := ancho_deseado / textura.get_width()
+	var tamano := textura.get_size() * escala
+	var rng_nave := RandomNumberGenerator.new()
+	rng_nave.seed = world_seed + 77777
+
+	var posicion := Vector2.ZERO
+	var encontrada := false
+	for intento in range(120):
+		var angulo := rng_nave.randf() * TAU
+		var distancia := rng_nave.randf_range(TILE_SIZE * 3.0, TILE_SIZE * 7.0)
+		var candidato := posicion_jugador + Vector2(cos(angulo), sin(angulo)) * distancia
+		candidato.x = fposmod(candidato.x, WORLD_SIZE)
+		candidato.y = fposmod(candidato.y, WORLD_SIZE)
+		if _posicion_valida_nave(candidato) and _reservar_espacio(candidato, tamano, true):
+			posicion = candidato
+			encontrada = true
+			break
+	if not encontrada:
+		for radio in range(3, 24):
+			for paso in range(24):
+				var ang := float(paso) / 24.0 * TAU
+				var candidato := posicion_jugador + Vector2(cos(ang), sin(ang)) * float(radio) * TILE_SIZE
+				candidato.x = fposmod(candidato.x, WORLD_SIZE)
+				candidato.y = fposmod(candidato.y, WORLD_SIZE)
+				if _posicion_valida_nave(candidato) and _reservar_espacio(candidato, tamano, true):
+					posicion = candidato
+					encontrada = true
+					break
+			if encontrada:
+				break
+	if not encontrada:
+		posicion = posicion_jugador + Vector2(TILE_SIZE * 4.0, 0.0)
+		posicion.x = fposmod(posicion.x, WORLD_SIZE)
+		posicion.y = fposmod(posicion.y, WORLD_SIZE)
+		_reservar_espacio(posicion, tamano, true)
+
+	var contenedor := Node2D.new()
+	contenedor.name = "NaveDestrozada"
+	contenedor.position = posicion + Vector2(0, -MARGEN_PROFUNDIDAD_BASE)
+	contenedor.set_meta("base_y", posicion.y)
+	contenedor.set_meta("tipo_recurso", "nave_destrozada")
+
+	var sprite := Sprite2D.new()
+	sprite.name = "Sprite"
+	sprite.texture = textura
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	sprite.scale = Vector2.ONE * escala
+	sprite.position = Vector2(0, MARGEN_PROFUNDIDAD_BASE)
+	sprite.offset.y = -textura.get_height() / 2.0
+	contenedor.add_child(sprite)
+
+	var cuerpo := StaticBody2D.new()
+	cuerpo.name = "Cuerpo"
+	cuerpo.position = Vector2(0, MARGEN_PROFUNDIDAD_BASE)
+	contenedor.add_child(cuerpo)
+	var colision := CollisionShape2D.new()
+	var forma := RectangleShape2D.new()
+	forma.size = Vector2(maxf(16.0, tamano.x * 0.70), maxf(8.0, tamano.y * 0.25))
+	colision.shape = forma
+	colision.position = Vector2(0, -forma.size.y * 0.5)
+	cuerpo.add_child(colision)
+
+	resources_layer.add_child(contenedor)
+	_indexar_recurso_visual(contenedor)
+	_crear_copias_borde_recurso(contenedor)
+
+
+func _posicion_valida_nave(posicion: Vector2) -> bool:
+	var tx := posmod(floori(posicion.x / TILE_SIZE), MAP_SIZE)
+	var ty := posmod(floori(posicion.y / TILE_SIZE), MAP_SIZE)
+	var t := get_terrain(tx, ty)
+	if t == DEEP_WATER or t == WATER:
+		return false
+	# Evitar colocarla justo encima del jugador.
+	if resources_layer != null:
+		var jugador := _obtener_jugador()
+		if jugador != null and posicion.distance_to(jugador.global_position) < TILE_SIZE * 2.0:
+			return false
+	return true
+
+
+func _crear_copias_borde_recurso(original: Node2D) -> void:
+	var margen := _margen_copias()
+	var pos_base := _posicion_base_recurso(original)
+	if not (pos_base.x < margen or pos_base.x > WORLD_SIZE - margen or pos_base.y < margen or pos_base.y > WORLD_SIZE - margen):
+		return
+	for offset_y in [-1, 0, 1]:
+		for offset_x in [-1, 0, 1]:
+			if offset_x == 0 and offset_y == 0:
+				continue
+			var cerca_x: bool = (offset_x == -1 and pos_base.x < margen) or (offset_x == 1 and pos_base.x > WORLD_SIZE - margen) or (offset_x == 0)
+			var cerca_y: bool = (offset_y == -1 and pos_base.y < margen) or (offset_y == 1 and pos_base.y > WORLD_SIZE - margen) or (offset_y == 0)
+			var necesita: bool = (offset_x == -1 and pos_base.x < margen) or (offset_x == 1 and pos_base.x > WORLD_SIZE - margen) or (offset_y == -1 and pos_base.y < margen) or (offset_y == 1 and pos_base.y > WORLD_SIZE - margen)
+			if not necesita or not cerca_x or not cerca_y:
+				continue
+			var copy := _copiar_recurso(original)
+			if copy == null:
+				continue
+			copy.position = original.position + Vector2(offset_x * WORLD_SIZE, offset_y * WORLD_SIZE)
+			copy.name = original.name + "_VisualCopy"
+			resources_layer.add_child(copy)
+			_indexar_recurso_visual(copy)
+			_registrar_animaciones_recurso(copy)
 
 
 func _sprite_animado_recurso(recurso: Node) -> AnimatedSprite2D:
