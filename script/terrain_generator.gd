@@ -115,7 +115,10 @@ func _ready() -> void:
 		generacion_fallida.emit("No se pudo preparar el jugador.")
 		return
 	_colocar_jugador_en_posicion_segura(jugador)
-	_colocar_nave_destrozada_cerca(jugador.global_position)
+	_colocar_nave_destrozada()
+	# Si la nave fija quedó sobre el jugador, reubicar al jugador.
+	if _posicion_jugador_bloqueada(jugador.global_position):
+		_colocar_jugador_en_posicion_segura(jugador)
 	setup_camera()
 	await get_tree().process_frame
 	_actualizar_animaciones_visibles()
@@ -420,7 +423,7 @@ func _id_arbusto_recurso(recurso: Node) -> String:
 	return ""
 
 
-func _colocar_nave_destrozada_cerca(posicion_jugador: Vector2) -> void:
+func _colocar_nave_destrozada() -> void:
 	if resources_layer == null:
 		return
 	var textura := load("res://assets/recursos/nave_destrozada.png") as Texture2D
@@ -432,33 +435,35 @@ func _colocar_nave_destrozada_cerca(posicion_jugador: Vector2) -> void:
 	var rng_nave := RandomNumberGenerator.new()
 	rng_nave.seed = world_seed + 77777
 
-	var posicion := Vector2.ZERO
+	# Posición fija en el mundo, determinada solo por la semilla y el terreno/ocupación.
+	var centro := Vector2(WORLD_SIZE / 2.0, WORLD_SIZE / 2.0)
+	var posicion := centro
 	var encontrada := false
-	for intento in range(120):
+	for intento in range(240):
 		var angulo := rng_nave.randf() * TAU
-		var distancia := rng_nave.randf_range(TILE_SIZE * 3.0, TILE_SIZE * 7.0)
-		var candidato := posicion_jugador + Vector2(cos(angulo), sin(angulo)) * distancia
+		var distancia := rng_nave.randf_range(TILE_SIZE * 4.0, TILE_SIZE * 12.0)
+		var candidato := centro + Vector2(cos(angulo), sin(angulo)) * distancia
 		candidato.x = fposmod(candidato.x, WORLD_SIZE)
 		candidato.y = fposmod(candidato.y, WORLD_SIZE)
-		if _posicion_valida_nave(candidato) and _reservar_espacio(candidato, tamano, true):
+		if _posicion_valida_nave_fija(candidato) and _reservar_espacio(candidato, tamano, true):
 			posicion = candidato
 			encontrada = true
 			break
 	if not encontrada:
-		for radio in range(3, 24):
-			for paso in range(24):
-				var ang := float(paso) / 24.0 * TAU
-				var candidato := posicion_jugador + Vector2(cos(ang), sin(ang)) * float(radio) * TILE_SIZE
+		for radio in range(4, 32):
+			for paso in range(32):
+				var ang := float(paso) / 32.0 * TAU
+				var candidato := centro + Vector2(cos(ang), sin(ang)) * float(radio) * TILE_SIZE
 				candidato.x = fposmod(candidato.x, WORLD_SIZE)
 				candidato.y = fposmod(candidato.y, WORLD_SIZE)
-				if _posicion_valida_nave(candidato) and _reservar_espacio(candidato, tamano, true):
+				if _posicion_valida_nave_fija(candidato) and _reservar_espacio(candidato, tamano, true):
 					posicion = candidato
 					encontrada = true
 					break
 			if encontrada:
 				break
 	if not encontrada:
-		posicion = posicion_jugador + Vector2(TILE_SIZE * 4.0, 0.0)
+		posicion = centro + Vector2(TILE_SIZE * 5.0, TILE_SIZE * 3.0)
 		posicion.x = fposmod(posicion.x, WORLD_SIZE)
 		posicion.y = fposmod(posicion.y, WORLD_SIZE)
 		_reservar_espacio(posicion, tamano, true)
@@ -482,30 +487,40 @@ func _colocar_nave_destrozada_cerca(posicion_jugador: Vector2) -> void:
 	cuerpo.name = "Cuerpo"
 	cuerpo.position = Vector2(0, MARGEN_PROFUNDIDAD_BASE)
 	contenedor.add_child(cuerpo)
-	var colision := CollisionShape2D.new()
-	var forma := RectangleShape2D.new()
-	forma.size = Vector2(maxf(16.0, tamano.x * 0.70), maxf(8.0, tamano.y * 0.25))
-	colision.shape = forma
-	colision.position = Vector2(0, -forma.size.y * 0.5)
-	cuerpo.add_child(colision)
+	_agregar_colision_nave(cuerpo, textura, escala)
 
 	resources_layer.add_child(contenedor)
 	_indexar_recurso_visual(contenedor)
 	_crear_copias_borde_recurso(contenedor)
 
 
-func _posicion_valida_nave(posicion: Vector2) -> bool:
+func _posicion_valida_nave_fija(posicion: Vector2) -> bool:
 	var tx := posmod(floori(posicion.x / TILE_SIZE), MAP_SIZE)
 	var ty := posmod(floori(posicion.y / TILE_SIZE), MAP_SIZE)
 	var t := get_terrain(tx, ty)
-	if t == DEEP_WATER or t == WATER:
-		return false
-	# Evitar colocarla justo encima del jugador.
-	if resources_layer != null:
-		var jugador := _obtener_jugador()
-		if jugador != null and posicion.distance_to(jugador.global_position) < TILE_SIZE * 2.0:
-			return false
-	return true
+	return t != DEEP_WATER and t != WATER
+
+
+func _agregar_colision_nave(cuerpo: StaticBody2D, textura: Texture2D, escala: float) -> void:
+	# Polígono de base aproximado a la huella visible inferior de la nave (coordenadas de imagen).
+	var w := float(textura.get_width())
+	var h := float(textura.get_height())
+	var puntos_img := PackedVector2Array([
+		Vector2(130, 620),
+		Vector2(74, 560),
+		Vector2(74, 520),
+		Vector2(910, 520),
+		Vector2(1000, 560),
+		Vector2(1008, 620),
+		Vector2(896, 640),
+		Vector2(856, 640),
+	])
+	var puntos := PackedVector2Array()
+	for p in puntos_img:
+		puntos.append(Vector2((p.x - w / 2.0) * escala, (p.y - h) * escala))
+	var colision := CollisionPolygon2D.new()
+	colision.polygon = puntos
+	cuerpo.add_child(colision)
 
 
 func _crear_copias_borde_recurso(original: Node2D) -> void:
