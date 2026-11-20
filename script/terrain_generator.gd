@@ -77,6 +77,10 @@ var recursos_visibles: Dictionary = {}
 var celdas_visibles_recursos: Dictionary = {}
 var celdas_visibles_animadas: Dictionary = {}
 var arbustos_por_celda: Dictionary = {}
+var visuales_rocas: Dictionary = {}
+var rocas_por_celda: Dictionary = {}
+var rocas_golpeadas: Dictionary = {}
+var contador_rocas: int = 0
 var temporizador_visibilidad := 0.0
 var posicion_revision_animaciones := Vector2(INF, INF)
 var tamano_revision_animaciones := Vector2.ZERO
@@ -95,6 +99,7 @@ func _ready() -> void:
 		var progreso: Dictionary = GestorMundos.mundo_actual.get("progreso", {})
 		inventario.cargar(progreso.get("inventario", {}))
 		arbustos_recolectados = progreso.get("cambios_mundo", {}).get("arbustos_recolectados", {}).duplicate(true)
+		rocas_golpeadas = progreso.get("cambios_mundo", {}).get("rocas_golpeadas", {}).duplicate(true)
 	y_sort_enabled = true
 	reloj_viento.randomize()
 	setup_noise()
@@ -188,6 +193,12 @@ func create_resource_copies() -> void:
 					if not visuales_arbustos.has(arbusto_id):
 						visuales_arbustos[arbusto_id] = []
 					visuales_arbustos[arbusto_id].append(copy)
+
+				var roca_id := _id_roca_recurso(original)
+				if not roca_id.is_empty():
+					if not visuales_rocas.has(roca_id):
+						visuales_rocas[roca_id] = []
+					visuales_rocas[roca_id].append(copy)
 	avance_generacion.emit("copias_recursos", 1, 1)
 	await get_tree().process_frame
 
@@ -252,10 +263,16 @@ func place_rock(tile_center: Vector2) -> void:
 	var tamano := textura.get_size() * escala
 	if not _reservar_espacio(tile_center, tamano, true):
 		return
+	var roca_id := "roca_%d_%d_%d" % [floori(tile_center.x), floori(tile_center.y), contador_rocas]
+	contador_rocas += 1
+	if rocas_golpeadas.has(roca_id):
+		return
 	var contenedor := Node2D.new()
 	contenedor.name = "Roca"
 	contenedor.position = tile_center + Vector2(0, -MARGEN_PROFUNDIDAD_BASE)
 	contenedor.set_meta("base_y", tile_center.y)
+	contenedor.set_meta("tipo_roca", tipo)
+	contenedor.set_meta("roca_id", roca_id)
 	var sprite := Sprite2D.new()
 	sprite.name = "Sprite"
 	sprite.texture = textura
@@ -277,6 +294,9 @@ func place_rock(tile_center: Vector2) -> void:
 	cuerpo.add_child(colision)
 	resources_layer.add_child(contenedor)
 	_indexar_recurso_visual(contenedor)
+	visuales_rocas[roca_id] = [contenedor]
+	var celda := Vector2i(floori(tile_center.x / TILE_SIZE), floori(tile_center.y / TILE_SIZE))
+	rocas_por_celda[celda] = roca_id
 
 
 func _preparar_recursos() -> void:
@@ -578,6 +598,127 @@ func _sprites_animados_recurso(recurso: Node) -> Array[AnimatedSprite2D]:
 func _registrar_animaciones_recurso(recurso: Node) -> void:
 	for sprite in _sprites_animados_recurso(recurso):
 		_registrar_animacion(sprite)
+
+
+func _id_roca_recurso(recurso: Node) -> String:
+	if recurso != null and recurso.has_meta("roca_id"):
+		return String(recurso.get_meta("roca_id"))
+	return ""
+
+
+func _tipo_roca_recurso(recurso: Node) -> int:
+	if recurso == null:
+		return -1
+	if recurso.has_meta("tipo_roca"):
+		return int(recurso.get_meta("tipo_roca"))
+	return -1
+
+
+func golpear_cercano(posicion: Vector2, direccion: String = "down", alcance: float = 48.0) -> bool:
+	var dir := Vector2.DOWN
+	match direccion:
+		"left":
+			dir = Vector2.LEFT
+		"right":
+			dir = Vector2.RIGHT
+		"up":
+			dir = Vector2.UP
+		_:
+			dir = Vector2.DOWN
+	var origen := posicion + dir * 10.0
+	var mas_cercano := ""
+	var mejor := alcance + 1.0
+	var centro := Vector2i(floori(origen.x / TILE_SIZE), floori(origen.y / TILE_SIZE))
+	var radio := ceili(alcance / TILE_SIZE) + 1
+	for y in range(-radio, radio + 1):
+		for x in range(-radio, radio + 1):
+			var celda := Vector2i(posmod(centro.x + x, MAP_SIZE), posmod(centro.y + y, MAP_SIZE))
+			var id: String = rocas_por_celda.get(celda, "")
+			if id.is_empty() or rocas_golpeadas.has(id):
+				continue
+			var visuales: Array = visuales_rocas.get(id, [])
+			if visuales.is_empty():
+				continue
+			var original: Node2D = visuales[0] as Node2D
+			if original == null or not is_instance_valid(original):
+				continue
+			var pos_base := _posicion_base_recurso(original)
+			var delta := pos_base - origen
+			delta.x = fposmod(delta.x + WORLD_SIZE / 2.0, WORLD_SIZE) - WORLD_SIZE / 2.0
+			delta.y = fposmod(delta.y + WORLD_SIZE / 2.0, WORLD_SIZE) - WORLD_SIZE / 2.0
+			# Preferir rocas en la dirección del golpe.
+			var puntaje_dir := 0.0
+			if delta.length() > 0.001:
+				puntaje_dir = maxf(0.0, delta.normalized().dot(dir))
+			var dist := delta.length()
+			var costo := dist - puntaje_dir * 8.0
+			if dist <= alcance and costo < mejor:
+				mejor = costo
+				mas_cercano = id
+	if mas_cercano.is_empty():
+		return false
+
+	var visuales_objetivo: Array = visuales_rocas.get(mas_cercano, [])
+	if visuales_objetivo.is_empty():
+		return false
+	var nodo_ref: Node = visuales_objetivo[0]
+	var tipo_roca := _tipo_roca_recurso(nodo_ref)
+	var item_id := ""
+	var item_nombre := ""
+	var item_icono := ""
+	if tipo_roca == 0:
+		item_id = "roca_normal"
+		item_nombre = "Roca"
+		item_icono = "res://assets/objetos/roca_normal.png"
+	elif tipo_roca == 1:
+		item_id = "roca_reforzada"
+		item_nombre = "Roca reforzada"
+		item_icono = "res://assets/objetos/roca_reforzada.png"
+	else:
+		# Otros tipos de roca: entregar roca normal.
+		item_id = "roca_normal"
+		item_nombre = "Roca"
+		item_icono = "res://assets/objetos/roca_normal.png"
+
+	if not inventario.agregar(item_id, item_nombre, 1, {"icono": item_icono}):
+		var interfaz_llena := get_node_or_null("InterfazMundo")
+		if interfaz_llena != null and interfaz_llena.has_method("mostrar_mensaje"):
+			interfaz_llena.mostrar_mensaje("Inventario lleno")
+		return false
+
+	rocas_golpeadas[mas_cercano] = true
+	# Limpiar índice por celda.
+	for celda_key in rocas_por_celda.keys():
+		if String(rocas_por_celda[celda_key]) == mas_cercano:
+			rocas_por_celda.erase(celda_key)
+			break
+	for recurso in visuales_objetivo:
+		if recurso == null or not is_instance_valid(recurso):
+			continue
+		_desindexar_recurso_visual(recurso)
+		recurso.queue_free()
+	visuales_rocas.erase(mas_cercano)
+
+	var interfaz := get_node_or_null("InterfazMundo")
+	if interfaz != null and interfaz.has_method("actualizar_inventario"):
+		interfaz.actualizar_inventario()
+	return true
+
+
+func _desindexar_recurso_visual(recurso: Node2D) -> void:
+	if recurso == null:
+		return
+	if recursos_visibles.has(recurso):
+		recursos_visibles.erase(recurso)
+	var pos_base := _posicion_base_recurso(recurso)
+	var celda := Vector2i(floori(pos_base.x / TAMANO_REGION_VISIBILIDAD), floori(pos_base.y / TAMANO_REGION_VISIBILIDAD))
+	if regiones_recursos_vis.has(celda):
+		var arr: Array = regiones_recursos_vis[celda]
+		arr.erase(recurso)
+		if arr.is_empty():
+			regiones_recursos_vis.erase(celda)
+		else:
+			regiones_recursos_vis[celda] = arr
 
 
 

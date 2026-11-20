@@ -37,6 +37,11 @@ var vida := 20
 var hambre_maxima := 20
 var hambre := 20
 var hambre_acumulada: float = 0.0
+var golpeando: bool = false
+var tiempo_golpe: float = 0.0
+var enfriamiento_golpe: float = 0.0
+var offset_golpe: Vector2 = Vector2.ZERO
+var sonido_pasos: AudioStreamPlayer
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 
 
@@ -46,6 +51,7 @@ func _ready() -> void:
 		world = world.get_parent()
 	_cargar_supervivencia()
 	_asegurar_animaciones_nado()
+	_configurar_sonido_pasos()
 	_actualizar_animacion(Vector2.ZERO, false, false)
 	sprite.animation_finished.connect(_terminar_reposo)
 	espera_reposo = randf_range(2.5, 6.0)
@@ -55,6 +61,17 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if enfriamiento_golpe > 0.0:
+		enfriamiento_golpe = maxf(0.0, enfriamiento_golpe - delta)
+	if golpeando:
+		tiempo_golpe -= delta
+		if tiempo_golpe <= 0.0:
+			golpeando = false
+			offset_golpe = Vector2.ZERO
+
+	if Input.is_action_just_pressed("golpear") and enfriamiento_golpe <= 0.0 and not golpeando:
+		_iniciar_golpe()
+
 	if Input.is_action_just_pressed("interactuar"):
 		if not _intentar_comer_seleccionado():
 			if world != null and world.has_method("recolectar_cercano"):
@@ -102,6 +119,7 @@ func _physics_process(delta: float) -> void:
 	wrap_position()
 	_actualizar_reposo(delta, direction, nadando)
 	_actualizar_consumo_hambre(delta, nadando, corriendo, moviendose)
+	_actualizar_sonido_pasos(moviendose, nadando)
 
 
 func _intentar_comer_seleccionado() -> bool:
@@ -135,6 +153,66 @@ func _intentar_comer_seleccionado() -> bool:
 			aumentar_hambre(2)
 		return true
 	return false
+
+
+func _configurar_sonido_pasos() -> void:
+	sonido_pasos = AudioStreamPlayer.new()
+	sonido_pasos.name = "SonidoPasos"
+	sonido_pasos.bus = "Sonidos"
+	add_child(sonido_pasos)
+
+
+func _actualizar_sonido_pasos(moviendose: bool, nadando: bool) -> void:
+	if sonido_pasos == null:
+		return
+	var en_pasto := moviendose and not nadando and current_terrain == GRASS
+	if en_pasto:
+		var stream: AudioStream = null
+		var ga = get_node_or_null("/root/GestorAudio")
+		if ga != null and ga.has_method("stream_caminata_cesped"):
+			stream = ga.stream_caminata_cesped()
+		elif ga != null:
+			stream = ga.get("sfx_caminata_cesped")
+		if stream != null:
+			if sonido_pasos.stream != stream:
+				sonido_pasos.stream = stream
+			if not sonido_pasos.playing:
+				sonido_pasos.play()
+		else:
+			if sonido_pasos.playing:
+				sonido_pasos.stop()
+	else:
+		if sonido_pasos.playing:
+			sonido_pasos.stop()
+
+
+func _direccion_golpe() -> Vector2:
+	match ultima_direccion:
+		"left":
+			return Vector2.LEFT
+		"right":
+			return Vector2.RIGHT
+		"up":
+			return Vector2.UP
+		_:
+			return Vector2.DOWN
+
+
+func _iniciar_golpe() -> void:
+	golpeando = true
+	tiempo_golpe = 0.28
+	enfriamiento_golpe = 0.35
+	# Efecto visual simple de golpe (lunge) como animación si no hay sprites dedicados.
+	var dir := _direccion_golpe()
+	offset_golpe = dir * 4.0
+	var tw := create_tween()
+	tw.tween_property(self, "offset_golpe", Vector2.ZERO, 0.18)
+	# Sonido y lógica de golpe.
+	var ga = get_node_or_null("/root/GestorAudio")
+	if ga != null and ga.has_method("reproducir_golpe"):
+		ga.reproducir_golpe()
+	if world != null and world.has_method("golpear_cercano"):
+		world.golpear_cercano(global_position, ultima_direccion)
 
 
 func _actualizar_reposo(delta: float, direccion: Vector2, nadando: bool) -> void:
@@ -226,13 +304,15 @@ func _actualizar_animacion(direccion: Vector2, nadando: bool, corriendo: bool) -
 		animacion = ("walk_" if moviendose else "idle_") + ultima_direccion
 
 	# Escala y alineación de pies/base. En agua el personaje se hunde para cubrir las botas.
+	var base_y := 0.0
 	if nadando:
 		sprite.scale = Vector2(0.2, 0.2)
 		var hundimiento := 11.0 if current_terrain == WATER else 12.0
-		sprite.position.y = -7.0 + hundimiento
+		base_y = -7.0 + hundimiento
 	else:
 		sprite.scale = Vector2(0.133333, 0.133333) if animacion in ["idle_left", "idle_right"] else Vector2(0.2, 0.2)
-		sprite.position.y = -3.2 if animacion in ["idle_left", "idle_right"] else -7.0
+		base_y = -3.2 if animacion in ["idle_left", "idle_right"] else -7.0
+	sprite.position = Vector2(offset_golpe.x, base_y + offset_golpe.y)
 
 	# Velocidad de animación: correr/nado rápido acelera la reproducción.
 	var velocidad_anim := 1.0

@@ -1,4 +1,4 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://script/interfaz/opciones.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://recursos_interfaz/botones/boton_volver.png" id="2_volver"]
@@ -44,11 +44,22 @@ theme_override_font_sizes/font_size = 36
 text = "OPCIONES"
 horizontal_alignment = 1
 
-[node name="EtiquetaVolumen" type="Label" parent="Centro/Contenido"]
+[node name="EtiquetaMusica" type="Label" parent="Centro/Contenido"]
 layout_mode = 2
-text = "Volumen general"
+text = "Música"
 
-[node name="Volumen" type="HSlider" parent="Centro/Contenido"]
+[node name="Musica" type="HSlider" parent="Centro/Contenido"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="EtiquetaSonidos" type="Label" parent="Centro/Contenido"]
+layout_mode = 2
+text = "Sonidos"
+
+[node name="Sonidos" type="HSlider" parent="Centro/Contenido"]
 custom_minimum_size = Vector2(0, 36)
 layout_mode = 2
 max_value = 1.0

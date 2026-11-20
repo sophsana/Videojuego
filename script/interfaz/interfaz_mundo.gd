@@ -469,7 +469,8 @@ func _guardar_y_salir() -> void:
 	boton.disabled = true
 	var vida_val = p.vida if "vida" in p else 20
 	var hambre_val = p.hambre if "hambre" in p else 20
-	var ok := GestorMundos.guardar_progreso(p.position, inventario, mundo.arbustos_recolectados, vida_val, hambre_val)
+	var rocas_val = mundo.get("rocas_golpeadas") if mundo != null else {}
+	var ok := GestorMundos.guardar_progreso(p.position, inventario, mundo.arbustos_recolectados, vida_val, hambre_val, rocas_val)
 	if ok:
 		var error := get_tree().change_scene_to_file("res://escenas/interfaz/seleccion_mundos.tscn")
 		if error == OK:

@@ -122,7 +122,7 @@ func iniciar_mundo(datos: Dictionary) -> Error:
 	return error
 
 
-func guardar_progreso(posicion: Vector2, inventario = null, arbustos = null, vida = null, hambre = null) -> bool:
+func guardar_progreso(posicion: Vector2, inventario = null, arbustos = null, vida = null, hambre = null, rocas_golpeadas = null) -> bool:
 	ultimo_error = ""
 	if mundo_actual.is_empty() or not mundo_actual.get("id") is String:
 		ultimo_error = "No hay un mundo guardado seleccionado."
@@ -153,9 +153,12 @@ func guardar_progreso(posicion: Vector2, inventario = null, arbustos = null, vid
 			progreso["inventario"] = inventario.serializar()
 		else:
 			progreso["inventario"] = inventario.duplicate(true)
-	if arbustos != null:
+	if arbustos != null or rocas_golpeadas != null:
 		var cambios: Dictionary = progreso.get("cambios_mundo", {}).duplicate(true)
-		cambios["arbustos_recolectados"] = arbustos.duplicate(true)
+		if arbustos != null:
+			cambios["arbustos_recolectados"] = arbustos.duplicate(true)
+		if rocas_golpeadas != null:
+			cambios["rocas_golpeadas"] = rocas_golpeadas.duplicate(true)
 		progreso["cambios_mundo"] = cambios
 	datos["progreso"] = progreso
 	datos["tamano_tile"] = Dimensiones.TILE_SIZE
@@ -246,6 +249,9 @@ func _leer_mundo(ruta: String) -> Dictionary:
 	var arbustos = cambios.get("arbustos_recolectados", {})
 	if not arbustos is Dictionary:
 		cambios["arbustos_recolectados"] = {}
+	var rocas_g = cambios.get("rocas_golpeadas", {})
+	if not rocas_g is Dictionary:
+		cambios["rocas_golpeadas"] = {}
 	else:
 		for id in arbustos.keys():
 			if not id is String or arbustos[id] != true:
