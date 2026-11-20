@@ -12,6 +12,13 @@ const GRASS: int = 3
 const DIRT: int = 4
 const ROCK: int = 5
 
+const RUN_MULT: float = 1.55
+const SWIM_MULT: float = 0.45
+const SWIM_RUN_MULT: float = 0.72
+# Hambre por segundo según actividad (acumulada fraccionalmente).
+const HAMBRE_NADO: float = 0.08
+const HAMBRE_CORRER: float = 0.18
+
 @export var walk_speed: float = 100.0
 @export var acceleration: float = 600.0
 @export var deceleration: float = 800.0
@@ -29,6 +36,7 @@ var vida_maxima := 20
 var vida := 20
 var hambre_maxima := 20
 var hambre := 20
+var hambre_acumulada: float = 0.0
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 
 
@@ -37,7 +45,8 @@ func _ready() -> void:
 	if world != null and world.name == "Recursos":
 		world = world.get_parent()
 	_cargar_supervivencia()
-	_actualizar_animacion(Vector2.ZERO)
+	_asegurar_animaciones_nado()
+	_actualizar_animacion(Vector2.ZERO, false, false)
 	sprite.animation_finished.connect(_terminar_reposo)
 	espera_reposo = randf_range(2.5, 6.0)
 	# La profundidad se resuelve por Y-sort usando la posición de los pies.
@@ -57,10 +66,26 @@ func _physics_process(delta: float) -> void:
 		"ui_down"
 	)
 
-	var target_velocity: Vector2 = direction * walk_speed * terrain_speed
-	_actualizar_animacion(direction if terrain_speed > 0.0 else Vector2.ZERO)
+	var moviendose := direction != Vector2.ZERO
+	var nadando := _esta_nadando()
+	var quiere_correr := Input.is_action_pressed("correr")
+	var corriendo := quiere_correr and moviendose
 
-	if direction != Vector2.ZERO:
+	var velocidad_base := walk_speed
+	if nadando:
+		velocidad_base = walk_speed * (SWIM_RUN_MULT if corriendo else SWIM_MULT)
+		if current_terrain == DEEP_WATER and not corriendo:
+			velocidad_base *= 0.85
+	else:
+		var factor := terrain_speed
+		if corriendo:
+			factor *= RUN_MULT
+		velocidad_base = walk_speed * factor
+
+	var target_velocity: Vector2 = direction * velocidad_base
+	_actualizar_animacion(direction, nadando, corriendo)
+
+	if moviendose:
 		velocity = velocity.move_toward(
 			target_velocity,
 			acceleration * delta
@@ -73,11 +98,12 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 	wrap_position()
-	_actualizar_reposo(delta, direction)
+	_actualizar_reposo(delta, direction, nadando)
+	_actualizar_consumo_hambre(delta, nadando, corriendo, moviendose)
 
 
-func _actualizar_reposo(delta: float, direccion: Vector2) -> void:
-	if direccion != Vector2.ZERO or velocity.length() > 1.0:
+func _actualizar_reposo(delta: float, direccion: Vector2, nadando: bool) -> void:
+	if nadando or direccion != Vector2.ZERO or velocity.length() > 1.0:
 		if reposo_activo:
 			sprite.stop()
 			sprite.frame = 0
@@ -146,8 +172,10 @@ func wrap_position() -> void:
 			camara.reset_smoothing()
 
 
-func _actualizar_animacion(direccion: Vector2) -> void:
-	if direccion != Vector2.ZERO:
+func _actualizar_animacion(direccion: Vector2, nadando: bool, corriendo: bool) -> void:
+	_asegurar_animaciones_nado()
+	var moviendose := direccion != Vector2.ZERO
+	if moviendose:
 		if absf(direccion.x) > absf(direccion.y):
 			ultima_direccion = "right" if direccion.x > 0 else "left"
 		elif absf(direccion.y) > absf(direccion.x):
@@ -155,27 +183,119 @@ func _actualizar_animacion(direccion: Vector2) -> void:
 		elif ultima_direccion not in ["left" if direccion.x < 0 else "right", "up" if direccion.y < 0 else "down"]:
 			ultima_direccion = "down" if direccion.y > 0 else "up"
 	sprite.flip_h = ultima_direccion == "right"
-	var animacion := ("walk_" if direccion != Vector2.ZERO else "idle_") + ultima_direccion
-	# La hoja de reposo tiene celdas 270×360; las de caminata, 180×240.
-	sprite.scale = Vector2(0.133333, 0.133333) if animacion in ["idle_left", "idle_right"] else Vector2(0.2, 0.2)
-	# Alinear los píxeles inferiores de ambas hojas sobre el mismo punto de apoyo (pies/base).
-	sprite.position.y = -3.2 if animacion in ["idle_left", "idle_right"] else -7.0
+
+	var animacion: String
+	if nadando:
+		animacion = "swim_" + ultima_direccion
+	else:
+		animacion = ("walk_" if moviendose else "idle_") + ultima_direccion
+
+	# Escala y alineación de pies/base. En agua el personaje se hunde para cubrir las botas.
+	if nadando:
+		sprite.scale = Vector2(0.2, 0.2)
+		var hundimiento := 11.0 if current_terrain == WATER else 12.0
+		sprite.position.y = -7.0 + hundimiento
+	else:
+		sprite.scale = Vector2(0.133333, 0.133333) if animacion in ["idle_left", "idle_right"] else Vector2(0.2, 0.2)
+		sprite.position.y = -3.2 if animacion in ["idle_left", "idle_right"] else -7.0
+
+	# Velocidad de animación: correr/nado rápido acelera la reproducción.
+	var velocidad_anim := 1.0
+	if nadando:
+		velocidad_anim = 1.6 if corriendo else 1.0
+	elif moviendose and corriendo:
+		velocidad_anim = 1.55
+	sprite.speed_scale = velocidad_anim
+
 	if sprite.animation != animacion:
 		sprite.animation = animacion
-	if direccion != Vector2.ZERO:
+	if moviendose:
 		if not sprite.is_playing() or sprite.animation != animacion:
 			sprite.play(animacion)
+	elif nadando:
+		# Quieto flotando en agua: pose de nado en reposo.
+		sprite.stop()
+		sprite.frame = 0
 	elif not reposo_activo:
 		sprite.stop()
 		sprite.frame = 0
 
 
+func _esta_nadando() -> bool:
+	return current_terrain == WATER or current_terrain == DEEP_WATER
+
+
+func _actualizar_consumo_hambre(delta: float, nadando: bool, corriendo: bool, moviendose: bool) -> void:
+	if not moviendose or hambre <= 0:
+		return
+	var tasa := 0.0
+	if nadando and corriendo:
+		tasa = HAMBRE_NADO + HAMBRE_CORRER
+	elif nadando:
+		tasa = HAMBRE_NADO
+	elif corriendo:
+		tasa = HAMBRE_CORRER
+	else:
+		return
+	hambre_acumulada += tasa * delta
+	while hambre_acumulada >= 1.0 and hambre > 0:
+		hambre_acumulada -= 1.0
+		reducir_hambre(1)
+
+
+func _asegurar_animaciones_nado() -> void:
+	if sprite == null:
+		return
+	var sf := sprite.sprite_frames
+	if sf == null or sf.has_animation("swim_down"):
+		return
+	var defs := {
+		# Mismo criterio de vistas que las caminatas: abajo=espalda, arriba=frente, lateral=perfil.
+		"swim_down": "res://assets/Jugador/jugador_nado_atras.png",
+		"swim_up": "res://assets/Jugador/jugador_nado_adelante.png",
+		"swim_left": "res://assets/Jugador/jugador_nado_lateral.png",
+		"swim_right": "res://assets/Jugador/jugador_nado_lateral.png",
+	}
+	for anim_name in defs.keys():
+		if sf.has_animation(anim_name):
+			continue
+		var tex := _cargar_textura(defs[anim_name])
+		if tex == null:
+			continue
+		sf.add_animation(anim_name)
+		sf.set_animation_loop(anim_name, true)
+		sf.set_animation_speed(anim_name, 7.0)
+		for i in range(6):
+			var at := AtlasTexture.new()
+			at.atlas = tex
+			at.region = Rect2(i * 180, 0, 180, 360)
+			sf.add_frame(anim_name, at)
+
+
+func _cargar_textura(ruta: String) -> Texture2D:
+	if ResourceLoader.exists(ruta):
+		var t = load(ruta)
+		if t is Texture2D:
+			return t
+	var abs_path := ProjectSettings.globalize_path(ruta)
+	if FileAccess.file_exists(abs_path):
+		var img := Image.new()
+		if img.load(abs_path) == OK:
+			return ImageTexture.create_from_image(img)
+	return null
+
+
 func _cargar_supervivencia() -> void:
 	vida = vida_maxima
 	hambre = hambre_maxima
-	if GestorMundos.mundo_actual.is_empty():
+	var gm = get_node_or_null("/root/GestorMundos")
+	if gm == null:
 		return
-	var jugador: Dictionary = GestorMundos.mundo_actual.get("progreso", {}).get("jugador", {})
+	var mundo_actual: Dictionary = gm.get("mundo_actual") if gm.get("mundo_actual") is Dictionary else {}
+	if mundo_actual.is_empty():
+		return
+	var progreso: Dictionary = mundo_actual.get("progreso", {})
+	var jugador: Dictionary = progreso.get("jugador", {})
 	var v = jugador.get("vida", vida_maxima)
 	var h = jugador.get("hambre", hambre_maxima)
 	if v is int or v is float:

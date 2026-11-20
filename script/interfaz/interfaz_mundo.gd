@@ -3,9 +3,26 @@ extends CanvasLayer
 const SLOTS := 10
 const TEX_CORAZONES := preload("res://assets/Jugador/corazones_estados.png")
 const TEX_SLOTS := preload("res://assets/Jugador/slot_inventario.png")
+const RUTA_MUSLITOS := "res://assets/Jugador/muslitos_estados.png"
+
+# Coordenadas de recorte corregidas (determinadas por inspección de contenido visible):
+# corazones_estados.png (1080x359): 3 estados en segmentos horizontales separados.
+const REGION_CORAZON_VACIO := Rect2i(90, 77, 257, 200)
+const REGION_CORAZON_LLENO := Rect2i(417, 79, 246, 197)
+const REGION_CORAZON_MEDIO := Rect2i(735, 78, 253, 198)
+# muslitos_estados.png (1080x360): 3 estados en segmentos horizontales separados.
+const REGION_MUSLITO_VACIO := Rect2i(23, 32, 322, 310)
+const REGION_MUSLITO_MEDIO := Rect2i(384, 32, 321, 311)
+const REGION_MUSLITO_LLENO := Rect2i(744, 32, 321, 311)
+# slot_inventario.png (1080x540): 2 diseños individuales (no barra de 10).
+# Izquierda = normal, derecha = seleccionado (reutilizados para los 10 slots).
+const REGION_SLOT_NORMAL := Rect2i(60, 56, 422, 397)
+const REGION_SLOT_SELECCIONADO := Rect2i(599, 50, 426, 405)
+
+const TAMANO_CORAZON := Vector2(24, 24)
+const TAMANO_SLOT := Vector2(48, 48)
 
 var boton: Button
-var boton_guardar: Button
 var mensaje: Label
 var etiqueta_inventario: Label
 var contenedor_corazones: HBoxContainer
@@ -16,12 +33,16 @@ var iconos_hambre: Array[TextureRect] = []
 var fondos_slot: Array[TextureRect] = []
 var iconos_objeto: Array[TextureRect] = []
 var cantidades_slot: Array[Label] = []
+var nombres_slot: Array[Label] = []
 
 var tex_corazon_vacio: AtlasTexture
 var tex_corazon_medio: AtlasTexture
 var tex_corazon_lleno: AtlasTexture
-var regiones_slot_normal: Array[Texture2D] = []
-var regiones_slot_sel: Array[Texture2D] = []
+var tex_muslito_vacio: Texture2D
+var tex_muslito_medio: Texture2D
+var tex_muslito_lleno: Texture2D
+var tex_slot_normal: AtlasTexture
+var tex_slot_seleccionado: AtlasTexture
 
 var mundo: Node
 var inventario
@@ -32,44 +53,70 @@ func _ready() -> void:
 	layer = 10
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	mundo = get_parent()
-	inventario = mundo.get("inventario")
-	jugador = mundo.get_node_or_null("Recursos/Player")
-	if jugador == null:
-		jugador = mundo.find_child("Player", true, false)
+	inventario = mundo.get("inventario") if mundo != null else null
+	jugador = _buscar_jugador()
 	_preparar_texturas()
 	_construir_ui()
 	_conectar()
 	_actualizar_todo()
 
 
+func _buscar_jugador():
+	if mundo == null:
+		return null
+	var j = mundo.get_node_or_null("Recursos/Player")
+	if j == null:
+		j = mundo.find_child("Player", true, false)
+	return j
+
+
 func _preparar_texturas() -> void:
-	var w := TEX_CORAZONES.get_width()
-	var h := TEX_CORAZONES.get_height()
-	var cw := int(w / 3)
-	# Estados en orden horizontal: vacío, medio, lleno (ajustable si el recurso difiere).
 	tex_corazon_vacio = AtlasTexture.new()
 	tex_corazon_vacio.atlas = TEX_CORAZONES
-	tex_corazon_vacio.region = Rect2(0, 0, cw, h)
-	tex_corazon_medio = AtlasTexture.new()
-	tex_corazon_medio.atlas = TEX_CORAZONES
-	tex_corazon_medio.region = Rect2(cw, 0, cw, h)
+	tex_corazon_vacio.region = Rect2(REGION_CORAZON_VACIO)
+
 	tex_corazon_lleno = AtlasTexture.new()
 	tex_corazon_lleno.atlas = TEX_CORAZONES
-	tex_corazon_lleno.region = Rect2(cw * 2, 0, cw, h)
+	tex_corazon_lleno.region = Rect2(REGION_CORAZON_LLENO)
 
-	var sw := TEX_SLOTS.get_width()
-	var sh := TEX_SLOTS.get_height()
-	var rh := int(sh / 2)
-	var cell_w := int(sw / SLOTS)
-	for i in range(SLOTS):
-		var n := AtlasTexture.new()
-		n.atlas = TEX_SLOTS
-		n.region = Rect2(i * cell_w, 0, cell_w, rh)
-		regiones_slot_normal.append(n)
-		var s := AtlasTexture.new()
-		s.atlas = TEX_SLOTS
-		s.region = Rect2(i * cell_w, rh, cell_w, rh)
-		regiones_slot_sel.append(s)
+	tex_corazon_medio = AtlasTexture.new()
+	tex_corazon_medio.atlas = TEX_CORAZONES
+	tex_corazon_medio.region = Rect2(REGION_CORAZON_MEDIO)
+
+	tex_slot_normal = AtlasTexture.new()
+	tex_slot_normal.atlas = TEX_SLOTS
+	tex_slot_normal.region = Rect2(REGION_SLOT_NORMAL)
+
+	tex_slot_seleccionado = AtlasTexture.new()
+	tex_slot_seleccionado.atlas = TEX_SLOTS
+	tex_slot_seleccionado.region = Rect2(REGION_SLOT_SELECCIONADO)
+
+	# Muslitos (hambre): carga directa por si no existe .import.
+	var img_muslitos := Image.new()
+	if img_muslitos.load(ProjectSettings.globalize_path(RUTA_MUSLITOS)) == OK:
+		var tex_muslitos_base := ImageTexture.create_from_image(img_muslitos)
+		var tmv := AtlasTexture.new()
+		tmv.atlas = tex_muslitos_base
+		tmv.region = Rect2(REGION_MUSLITO_VACIO)
+		tex_muslito_vacio = tmv
+		var tmm := AtlasTexture.new()
+		tmm.atlas = tex_muslitos_base
+		tmm.region = Rect2(REGION_MUSLITO_MEDIO)
+		tex_muslito_medio = tmm
+		var tml := AtlasTexture.new()
+		tml.atlas = tex_muslitos_base
+		tml.region = Rect2(REGION_MUSLITO_LLENO)
+		tex_muslito_lleno = tml
+
+
+func _configurar_texturerect(tr: TextureRect, tam: Vector2) -> void:
+	tr.custom_minimum_size = tam
+	tr.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	tr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
 func _construir_ui() -> void:
@@ -79,80 +126,107 @@ func _construir_ui() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
 
-	# HUD inferior centrado: corazones/hambre encima de la barra de slots.
+	# Bloque inferior centrado: [corazones | espacio hambre] sobre [10 slots].
 	var bottom := MarginContainer.new()
 	bottom.name = "BottomHUD"
-	bottom.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	bottom.anchor_left = 0.0
+	bottom.anchor_right = 1.0
 	bottom.anchor_top = 1.0
 	bottom.anchor_bottom = 1.0
+	bottom.offset_left = 0
+	bottom.offset_right = 0
+	bottom.offset_top = -190
+	bottom.offset_bottom = -8
 	bottom.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	bottom.offset_top = -180
-	bottom.add_theme_constant_override("margin_bottom", 10)
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(bottom)
 
 	var vbox := VBoxContainer.new()
 	vbox.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 4)
+	vbox.add_theme_constant_override("separation", 6)
 	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bottom.add_child(vbox)
 
-	var top_row := HBoxContainer.new()
-	top_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	top_row.add_theme_constant_override("separation", 80)
-	top_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(top_row)
-
-	contenedor_corazones = HBoxContainer.new()
-	contenedor_corazones.name = "Corazones"
-	contenedor_corazones.add_theme_constant_override("separation", 1)
-	contenedor_corazones.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	top_row.add_child(contenedor_corazones)
-	for i in range(10):
-		var tr := TextureRect.new()
-		tr.name = "Corazon_%d" % i
-		tr.custom_minimum_size = Vector2(18, 18)
-		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		contenedor_corazones.add_child(tr)
-		iconos_corazon.append(tr)
-
-	contenedor_hambre = HBoxContainer.new()
-	contenedor_hambre.name = "Hambre"
-	contenedor_hambre.add_theme_constant_override("separation", 1)
-	contenedor_hambre.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	top_row.add_child(contenedor_hambre)
-	# Espacio reservado para 10 iconos de hambre (sprites futuros).
-	for i in range(10):
-		var tr := TextureRect.new()
-		tr.name = "Hambre_%d" % i
-		tr.custom_minimum_size = Vector2(18, 18)
-		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		tr.modulate = Color(1, 1, 1, 0)
-		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		contenedor_hambre.add_child(tr)
-		iconos_hambre.append(tr)
-
+	# Barra de 10 slots (define el ancho de referencia para la fila superior).
 	contenedor_slots = HBoxContainer.new()
 	contenedor_slots.name = "Slots"
 	contenedor_slots.alignment = BoxContainer.ALIGNMENT_CENTER
-	contenedor_slots.add_theme_constant_override("separation", 2)
+	contenedor_slots.add_theme_constant_override("separation", 4)
+	contenedor_slots.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	contenedor_slots.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(contenedor_slots)
+
+	# Construimos primero la fila superior para poder igualar su ancho al de slots.
+	var top_row := HBoxContainer.new()
+	top_row.name = "TopRow"
+	top_row.add_theme_constant_override("separation", 24)
+	top_row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	top_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var left_half := HBoxContainer.new()
+	left_half.name = "MitadIzquierda"
+	left_half.alignment = BoxContainer.ALIGNMENT_BEGIN
+	left_half.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left_half.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top_row.add_child(left_half)
+
+	contenedor_corazones = HBoxContainer.new()
+	contenedor_corazones.name = "Corazones"
+	contenedor_corazones.add_theme_constant_override("separation", 2)
+	contenedor_corazones.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	left_half.add_child(contenedor_corazones)
+	for i in range(10):
+		var tr := TextureRect.new()
+		tr.name = "Corazon_%d" % i
+		_configurar_texturerect(tr, TAMANO_CORAZON)
+		contenedor_corazones.add_child(tr)
+		iconos_corazon.append(tr)
+
+	var right_half := HBoxContainer.new()
+	right_half.name = "MitadDerecha"
+	right_half.alignment = BoxContainer.ALIGNMENT_END
+	right_half.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right_half.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top_row.add_child(right_half)
+
+	contenedor_hambre = HBoxContainer.new()
+	contenedor_hambre.name = "Hambre"
+	contenedor_hambre.add_theme_constant_override("separation", 2)
+	contenedor_hambre.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	right_half.add_child(contenedor_hambre)
+	# 10 iconos de hambre (muslitos), 20 puntos.
+	for i in range(10):
+		var tr := TextureRect.new()
+		tr.name = "Hambre_%d" % i
+		_configurar_texturerect(tr, TAMANO_CORAZON)
+		contenedor_hambre.add_child(tr)
+		iconos_hambre.append(tr)
+
+	vbox.add_child(top_row)
+
+	# 10 slots centrados horizontalmente.
 	for i in range(SLOTS):
 		var slotc := Control.new()
 		slotc.name = "Slot_%d" % i
-		slotc.custom_minimum_size = Vector2(40, 40)
+		slotc.custom_minimum_size = Vector2(52, 64)
+		slotc.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		slotc.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		slotc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		contenedor_slots.add_child(slotc)
 
 		var fondo := TextureRect.new()
 		fondo.name = "Fondo"
-		fondo.set_anchors_preset(Control.PRESET_FULL_RECT)
-		fondo.stretch_mode = TextureRect.STRETCH_SCALE
+		fondo.anchor_left = 0.5
+		fondo.anchor_right = 0.5
+		fondo.anchor_top = 0.0
+		fondo.anchor_bottom = 0.0
+		fondo.offset_left = -24
+		fondo.offset_right = 24
+		fondo.offset_top = 0
+		fondo.offset_bottom = 48
+		fondo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		fondo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		fondo.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		fondo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slotc.add_child(fondo)
@@ -160,11 +234,15 @@ func _construir_ui() -> void:
 
 		var icono := TextureRect.new()
 		icono.name = "Icono"
-		icono.set_anchors_preset(Control.PRESET_FULL_RECT)
-		icono.offset_left = 6
-		icono.offset_top = 6
-		icono.offset_right = -6
-		icono.offset_bottom = -10
+		icono.anchor_left = 0.5
+		icono.anchor_right = 0.5
+		icono.anchor_top = 0.0
+		icono.anchor_bottom = 0.0
+		icono.offset_left = -20
+		icono.offset_right = 20
+		icono.offset_top = 4
+		icono.offset_bottom = 44
+		icono.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icono.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icono.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		icono.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -173,22 +251,50 @@ func _construir_ui() -> void:
 
 		var cant := Label.new()
 		cant.name = "Cantidad"
-		cant.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 		cant.anchor_left = 1.0
-		cant.anchor_top = 1.0
+		cant.anchor_top = 0.0
 		cant.anchor_right = 1.0
-		cant.anchor_bottom = 1.0
+		cant.anchor_bottom = 0.0
+		cant.offset_left = -30
+		cant.offset_top = 1
+		cant.offset_right = -3
+		cant.offset_bottom = 17
 		cant.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-		cant.grow_vertical = Control.GROW_DIRECTION_BEGIN
-		cant.offset_left = -36
-		cant.offset_top = -18
-		cant.offset_right = -4
-		cant.offset_bottom = -2
 		cant.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		cant.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 		cant.add_theme_font_size_override("font_size", 12)
 		cant.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slotc.add_child(cant)
 		cantidades_slot.append(cant)
+
+		var nombre := Label.new()
+		nombre.name = "Nombre"
+		nombre.anchor_left = 0.0
+		nombre.anchor_top = 1.0
+		nombre.anchor_right = 1.0
+		nombre.anchor_bottom = 1.0
+		nombre.offset_left = 0
+		nombre.offset_top = -16
+		nombre.offset_right = 0
+		nombre.offset_bottom = 0
+		nombre.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		nombre.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		nombre.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		nombre.clip_text = true
+		nombre.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		nombre.add_theme_font_size_override("font_size", 9)
+		nombre.add_theme_color_override("font_color", Color(1.0, 0.2, 0.2))
+		nombre.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+		nombre.add_theme_constant_override("outline_size", 2)
+		nombre.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slotc.add_child(nombre)
+		nombres_slot.append(nombre)
+
+	vbox.add_child(contenedor_slots)
+
+	# Igualar el ancho de la fila superior al ancho de la barra de slots para que
+	# los corazones queden sobre la mitad izquierda y el hambre sobre la derecha.
+	top_row.custom_minimum_size = Vector2(contenedor_slots.get_combined_minimum_size().x, 0)
 
 	# Guardar y salir + mensajes (no forma parte del HUD de supervivencia).
 	var margen := MarginContainer.new()
@@ -201,7 +307,6 @@ func _construir_ui() -> void:
 	var contenido := VBoxContainer.new()
 	margen.add_child(contenido)
 	boton = Button.new()
-	boton_guardar = boton
 	boton.name = "GuardarYSalir"
 	boton.text = "Guardar y salir"
 	boton.pressed.connect(_guardar_y_salir)
@@ -221,10 +326,7 @@ func _conectar() -> void:
 			inventario.cambiado.connect(_actualizar_inventario)
 		if inventario.has_signal("slot_seleccionado_cambiado") and not inventario.slot_seleccionado_cambiado.is_connected(_on_slot_seleccionado):
 			inventario.slot_seleccionado_cambiado.connect(_on_slot_seleccionado)
-	if jugador == null and mundo != null:
-		jugador = mundo.get_node_or_null("Recursos/Player")
-	if jugador == null:
-		jugador = mundo.find_child("Player", true, false)
+	jugador = _buscar_jugador()
 	if jugador != null:
 		if jugador.has_signal("vida_cambiada") and not jugador.vida_cambiada.is_connected(_actualizar_vida):
 			jugador.vida_cambiada.connect(_actualizar_vida)
@@ -262,10 +364,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _actualizar_todo() -> void:
 	_actualizar_inventario()
-	if jugador == null and mundo != null:
-		jugador = mundo.get_node_or_null("Recursos/Player")
-	if jugador == null:
-		jugador = mundo.find_child("Player", true, false)
+	jugador = _buscar_jugador()
 	if jugador != null and jugador.has_method("consultar_vida_actual"):
 		_actualizar_vida(jugador.consultar_vida_actual(), jugador.consultar_vida_maxima())
 		_actualizar_hambre(jugador.hambre, jugador.hambre_maxima)
@@ -284,30 +383,37 @@ func _actualizar_inventario() -> void:
 	for i in range(SLOTS):
 		var slot = inventario.slot(i) if inventario.has_method("slot") else null
 		var sel: bool = inventario.has_method("seleccionar") and i == int(inventario.seleccionado)
-		if i < regiones_slot_sel.size():
-			fondos_slot[i].texture = regiones_slot_sel[i] if sel else regiones_slot_normal[i]
+		fondos_slot[i].texture = tex_slot_seleccionado if sel else tex_slot_normal
 		if slot == null:
 			iconos_objeto[i].texture = null
 			iconos_objeto[i].modulate = Color(1, 1, 1, 0)
 			cantidades_slot[i].text = ""
+			nombres_slot[i].text = ""
 		else:
 			var icono := _icono_para_item(String(slot.get("id", "")), String(slot.get("icono", "")))
 			iconos_objeto[i].texture = icono
 			iconos_objeto[i].modulate = Color(1, 1, 1, 1) if icono != null else Color(0.85, 0.75, 0.35, 0.85)
 			var cantidad := int(slot.get("cantidad", 0))
 			cantidades_slot[i].text = str(cantidad) if cantidad > 1 else ""
+			nombres_slot[i].text = String(slot.get("nombre", ""))
 
 
 func _icono_para_item(id: String, ruta: String) -> Texture2D:
-	if not ruta.is_empty() and ResourceLoader.exists(ruta):
-		var tex = load(ruta)
-		if tex is Texture2D:
-			return tex
-	var por_id := "res://assets/objetos/%s.png" % id
-	if ResourceLoader.exists(por_id):
-		var tex = load(por_id)
-		if tex is Texture2D:
-			return tex
+	var candidatos: Array[String] = []
+	if not ruta.is_empty():
+		candidatos.append(ruta)
+	candidatos.append("res://assets/objetos/%s.png" % id)
+	for candidato in candidatos:
+		if ResourceLoader.exists(candidato):
+			var tex = load(candidato)
+			if tex is Texture2D:
+				return tex
+		# Fallback: carga directa (útil si falta .import).
+		var ruta_abs := ProjectSettings.globalize_path(candidato)
+		if FileAccess.file_exists(ruta_abs):
+			var img := Image.new()
+			if img.load(ruta_abs) == OK:
+				return ImageTexture.create_from_image(img)
 	return null
 
 
@@ -316,7 +422,6 @@ func _on_slot_seleccionado(_indice: int) -> void:
 
 
 func _actualizar_vida(vida: int, vida_maxima: int) -> void:
-	var max_puntos := maxi(vida_maxima, 20)
 	for i in range(iconos_corazon.size()):
 		var valor := clampi(vida - i * 2, 0, 2)
 		if valor >= 2:
@@ -327,10 +432,19 @@ func _actualizar_vida(vida: int, vida_maxima: int) -> void:
 			iconos_corazon[i].texture = tex_corazon_vacio
 
 
-func _actualizar_hambre(_hambre: int, _hambre_maxima: int) -> void:
-	# Espacio reservado para 10 iconos de comida; se conectará cuando existan sprites.
-	for tr in iconos_hambre:
-		tr.modulate = Color(1, 1, 1, 0)
+func _actualizar_hambre(hambre: int, _hambre_maxima: int) -> void:
+	for i in range(iconos_hambre.size()):
+		var valor := clampi(hambre - i * 2, 0, 2)
+		var tex: Texture2D = tex_muslito_vacio
+		if valor >= 2:
+			tex = tex_muslito_lleno
+		elif valor == 1:
+			tex = tex_muslito_medio
+		if tex != null:
+			iconos_hambre[i].texture = tex
+			iconos_hambre[i].modulate = Color(1, 1, 1, 1)
+		else:
+			iconos_hambre[i].modulate = Color(1, 1, 1, 0)
 
 
 func mostrar_mensaje(texto: String) -> void:
@@ -347,9 +461,7 @@ func mostrar_mensaje(texto: String) -> void:
 func _guardar_y_salir() -> void:
 	if mundo == null:
 		return
-	var p: CharacterBody2D = mundo.get_node_or_null("Recursos/Player")
-	if p == null:
-		p = mundo.find_child("Player", true, false) as CharacterBody2D
+	var p: CharacterBody2D = _buscar_jugador() as CharacterBody2D
 	if p == null:
 		return
 	p.set_physics_process(false)
@@ -366,4 +478,3 @@ func _guardar_y_salir() -> void:
 	else:
 		mostrar_mensaje(GestorMundos.ultimo_error + " Reintenta.")
 	boton.disabled = false
-

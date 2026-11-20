@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://chhnual5uypmh"
-path="res://.godot/imported/rocas_grupo.png-fc80568ab458dac696fc7827308e7292.ctex"
+uid="uid://c3iasdm12jmei"
+path="res://.godot/imported/jugador_nado_lateral.png-3b47a10f6c1f2d739ed0b05100354d8d.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/recursos/rocas_grupo.png"
-dest_files=["res://.godot/imported/rocas_grupo.png-fc80568ab458dac696fc7827308e7292.ctex"]
+source_file="res://assets/Jugador/jugador_nado_lateral.png"
+dest_files=["res://.godot/imported/jugador_nado_lateral.png-3b47a10f6c1f2d739ed0b05100354d8d.ctex"]
 
 [params]
 

@@ -69,8 +69,13 @@ var orilla_frames: Array[Image] = []
 var terreno_cache := PackedByteArray()
 var terreno_visual := PackedByteArray()
 const TAMANO_REGION_ANIMADA := 256.0
+const TAMANO_REGION_VISIBILIDAD := 256.0
 var regiones_animadas: Dictionary = {}
 var animados_visibles: Dictionary = {}
+var regiones_recursos_vis: Dictionary = {}
+var recursos_visibles: Dictionary = {}
+var celdas_visibles_recursos: Dictionary = {}
+var celdas_visibles_animadas: Dictionary = {}
 var arbustos_por_celda: Dictionary = {}
 var temporizador_visibilidad := 0.0
 var posicion_revision_animaciones := Vector2(INF, INF)
@@ -171,6 +176,7 @@ func create_resource_copies() -> void:
 				copy.position = original.position + offset
 				copy.name = original.name + "_VisualCopy"
 				resources_layer.add_child(copy)
+				_indexar_recurso_visual(copy)
 				_registrar_animaciones_recurso(copy)
 
 				var arbusto_id := _id_arbusto_recurso(original)
@@ -260,12 +266,13 @@ func place_rock(tile_center: Vector2) -> void:
 	contenedor.add_child(cuerpo)
 	var colision := CollisionShape2D.new()
 	var forma := RectangleShape2D.new()
-	# Colisión en la zona sólida de la roca, ajustada al tamaño.
-	forma.size = Vector2(maxf(6.0, tamano.x * 0.62), maxf(4.0, tamano.y * 0.26))
+	# Colisión en la zona sólida de la roca, ajustada al tamaño (más ancha).
+	forma.size = Vector2(maxf(10.0, tamano.x * 0.82), maxf(6.0, tamano.y * 0.32))
 	colision.shape = forma
 	colision.position = Vector2(0, -forma.size.y * 0.5)
 	cuerpo.add_child(colision)
 	resources_layer.add_child(contenedor)
+	_indexar_recurso_visual(contenedor)
 
 
 func _preparar_recursos() -> void:
@@ -275,12 +282,28 @@ func _preparar_recursos() -> void:
 		sprites_recursos["arbusto_%d" % i] = Catalogo.fotogramas(Catalogo.ARBUSTOS[i].ruta)
 		var datos: Dictionary = Catalogo.ARBUSTOS[i]
 		if datos.has("vacio"):
-			var original: SpriteFrames = sprites_recursos["arbusto_%d" % i]
-			var tamano := original.get_frame_texture("viento", 0).get_size()
-			var recorte := Rect2i(0, 0, int(tamano.x), int(tamano.y))
-			sprites_recursos["arbusto_%d_vacio" % i] = Catalogo.fotogramas(datos.vacio, recorte)
+			# Usar el recorte de contenido real del sprite "sin frutos" para evitar
+			# regiones vacías (el recorte (0,0) puede caer fuera del contenido).
+			var recorte_vacio := _recorte_union_imagen(String(datos.vacio))
+			if recorte_vacio.size == Vector2i.ZERO:
+				sprites_recursos["arbusto_%d_vacio" % i] = Catalogo.fotogramas(String(datos.vacio))
+			else:
+				sprites_recursos["arbusto_%d_vacio" % i] = Catalogo.fotogramas(String(datos.vacio), recorte_vacio)
 	for i in range(Catalogo.PESOS_ROCAS.size()):
 		texturas_rocas.append(Catalogo.roca(i))
+
+
+func _recorte_union_imagen(ruta: String) -> Rect2i:
+	var textura := load(ruta) as Texture2D
+	if textura == null:
+		return Rect2i()
+	var imagen := textura.get_image()
+	var union := Rect2i()
+	for i in range(6):
+		var celda := imagen.get_region(Rect2i(i * 180, 0, 180, 360))
+		var rect := celda.get_used_rect()
+		union = rect if union.size == Vector2i.ZERO else union.merge(rect)
+	return union
 
 
 func _reservar_espacio(posicion: Vector2, tamano: Vector2, usar_base := false) -> bool:
@@ -341,12 +364,25 @@ func _colocar_animado(tipo: String, posicion: Vector2, ancho: float, arbusto_id:
 		contenedor.add_child(cuerpo)
 		var colision := CollisionShape2D.new()
 		var forma := RectangleShape2D.new()
-		# Colisión en el tronco/base, no en la copa.
-		forma.size = Vector2(maxf(6.0, tamano.x * 0.18), maxf(5.0, tamano.y * 0.12))
+		# Colisión en el tronco/base, no en la copa (más ancha).
+		forma.size = Vector2(maxf(10.0, tamano.x * 0.34), maxf(6.0, tamano.y * 0.14))
+		colision.shape = forma
+		colision.position = Vector2(0, -forma.size.y * 0.5)
+		cuerpo.add_child(colision)
+	elif tipo.begins_with("arbusto_"):
+		var cuerpo := StaticBody2D.new()
+		cuerpo.name = "Cuerpo"
+		cuerpo.position = Vector2(0, MARGEN_PROFUNDIDAD_BASE)
+		contenedor.add_child(cuerpo)
+		var colision := CollisionShape2D.new()
+		var forma := RectangleShape2D.new()
+		# Colisión en la base del arbusto.
+		forma.size = Vector2(maxf(10.0, tamano.x * 0.55), maxf(6.0, tamano.y * 0.30))
 		colision.shape = forma
 		colision.position = Vector2(0, -forma.size.y * 0.5)
 		cuerpo.add_child(colision)
 	resources_layer.add_child(contenedor)
+	_indexar_recurso_visual(contenedor)
 	_registrar_animacion(sprite)
 	if not arbusto_id.is_empty():
 		contenedor.set_meta("arbusto_id", arbusto_id)
@@ -457,12 +493,13 @@ func recolectar_cercano(posicion: Vector2, alcance: float = 60.0) -> bool:
 	var cantidad := int(datos.get("frutos", 2))
 	var item_id := String(datos.get("item_id", "fruto_alienigena"))
 	var item_nombre := String(datos.get("item_nombre", "Fruto alienígena"))
+	var item_def := {"icono": String(datos.get("item_icono", ""))}
 	if inventario.has_method("puede_agregar") and not inventario.puede_agregar(item_id, cantidad):
 		var interfaz_llena := get_node_or_null("InterfazMundo")
 		if interfaz_llena != null and interfaz_llena.has_method("mostrar_mensaje"):
 			interfaz_llena.mostrar_mensaje("Inventario lleno")
 		return false
-	if not inventario.agregar(item_id, item_nombre, cantidad):
+	if not inventario.agregar(item_id, item_nombre, cantidad, item_def):
 		var interfaz_llena := get_node_or_null("InterfazMundo")
 		if interfaz_llena != null and interfaz_llena.has_method("mostrar_mensaje"):
 			interfaz_llena.mostrar_mensaje("Inventario lleno")
@@ -507,28 +544,71 @@ func _indexar_animacion(sprite: AnimatedSprite2D) -> void:
 	regiones_animadas[celda].append(sprite)
 
 
+func _indexar_recurso_visual(recurso: Node2D) -> void:
+	if not is_instance_valid(recurso):
+		return
+	if recurso.name == "Player":
+		return
+	var base := _posicion_base_recurso(recurso)
+	var celda := Vector2i(floori(base.x / TAMANO_REGION_VISIBILIDAD), floori(base.y / TAMANO_REGION_VISIBILIDAD))
+	if not regiones_recursos_vis.has(celda):
+		regiones_recursos_vis[celda] = []
+	regiones_recursos_vis[celda].append(recurso)
+	# Oculto por defecto; se mostrará cuando entre en rango visible.
+	recurso.visible = false
+
+
 func _actualizar_animaciones_visibles() -> void:
 	if world_camera == null:
 		return
 	var centro := world_camera.get_screen_center_position()
-	var mitad := get_viewport_rect().size / world_camera.zoom / 2.0 + Vector2(160, 160)
+	var mitad := get_viewport_rect().size / world_camera.zoom / 2.0 + Vector2(192, 192)
 	posicion_revision_animaciones = centro
 	tamano_revision_animaciones = mitad
 	var visible_rect := Rect2(centro - mitad, mitad * 2.0)
-	var visibles_nuevos := {}
-	var inicio := Vector2i(floori(visible_rect.position.x / TAMANO_REGION_ANIMADA), floori(visible_rect.position.y / TAMANO_REGION_ANIMADA))
-	var fin := Vector2i(floori(visible_rect.end.x / TAMANO_REGION_ANIMADA), floori(visible_rect.end.y / TAMANO_REGION_ANIMADA))
-	for y in range(inicio.y, fin.y + 1):
-		for x in range(inicio.x, fin.x + 1):
-			for sprite: AnimatedSprite2D in regiones_animadas.get(Vector2i(x, y), []):
-				if is_instance_valid(sprite) and visible_rect.has_point(sprite.global_position):
-					visibles_nuevos[sprite] = true
-	for sprite: AnimatedSprite2D in animados_visibles:
-		if is_instance_valid(sprite) and not visibles_nuevos.has(sprite):
-			sprite.stop()
-			sprite.frame = 0
-			viento_activo.erase(sprite)
-	animados_visibles = visibles_nuevos
+
+	# Visibilidad por celdas: solo se procesan celdas que entran/salen del rango.
+	var nuevas_celdas_recursos := {}
+	var inicio_r := Vector2i(floori(visible_rect.position.x / TAMANO_REGION_VISIBILIDAD), floori(visible_rect.position.y / TAMANO_REGION_VISIBILIDAD))
+	var fin_r := Vector2i(floori(visible_rect.end.x / TAMANO_REGION_VISIBILIDAD), floori(visible_rect.end.y / TAMANO_REGION_VISIBILIDAD))
+	for y in range(inicio_r.y, fin_r.y + 1):
+		for x in range(inicio_r.x, fin_r.x + 1):
+			var celda := Vector2i(x, y)
+			nuevas_celdas_recursos[celda] = true
+			if not celdas_visibles_recursos.has(celda):
+				for recurso: Node2D in regiones_recursos_vis.get(celda, []):
+					if is_instance_valid(recurso):
+						recurso.visible = true
+	for celda: Vector2i in celdas_visibles_recursos.keys():
+		if not nuevas_celdas_recursos.has(celda):
+			for recurso: Node2D in regiones_recursos_vis.get(celda, []):
+				if is_instance_valid(recurso):
+					recurso.visible = false
+	celdas_visibles_recursos = nuevas_celdas_recursos
+
+	# Sprites animados visibles para ráfagas de viento (también por celdas).
+	var nuevas_celdas_animadas := {}
+	var inicio_a := Vector2i(floori(visible_rect.position.x / TAMANO_REGION_ANIMADA), floori(visible_rect.position.y / TAMANO_REGION_ANIMADA))
+	var fin_a := Vector2i(floori(visible_rect.end.x / TAMANO_REGION_ANIMADA), floori(visible_rect.end.y / TAMANO_REGION_ANIMADA))
+	for y in range(inicio_a.y, fin_a.y + 1):
+		for x in range(inicio_a.x, fin_a.x + 1):
+			var celda := Vector2i(x, y)
+			nuevas_celdas_animadas[celda] = true
+			if not celdas_visibles_animadas.has(celda):
+				for sprite: AnimatedSprite2D in regiones_animadas.get(celda, []):
+					if is_instance_valid(sprite):
+						animados_visibles[sprite] = true
+	for celda: Vector2i in celdas_visibles_animadas.keys():
+		if not nuevas_celdas_animadas.has(celda):
+			for sprite: AnimatedSprite2D in regiones_animadas.get(celda, []):
+				if not is_instance_valid(sprite):
+					continue
+				if animados_visibles.has(sprite):
+					animados_visibles.erase(sprite)
+				sprite.stop()
+				sprite.frame = 0
+				viento_activo.erase(sprite)
+	celdas_visibles_animadas = nuevas_celdas_animadas
 
 
 func _actualizar_viento(delta: float) -> void:
@@ -797,8 +877,8 @@ func setup_terrain() -> void:
 		for par in range(4):
 			var esquina := TilesNaturaleza.unir_transiciones(rotadas[par], rotadas[(par + 1) % 4])
 			_copiar_atlas(esquina, ATLAS_TRANSICION + variante * 8 + 4 + par)
-	_actualizar_atlas_oleaje(0)
-	atlas_oleaje = ImageTexture.create_from_image(imagen_oleaje)
+	_precalcular_atlas_oleaje()
+	atlas_oleaje = ImageTexture.create_from_image(_atlas_oleaje_fases[0])
 	var atlas_source := TileSetAtlasSource.new()
 	atlas_source.texture = atlas_oleaje
 	atlas_source.texture_region_size = Vector2i(TILE_SIZE, TILE_SIZE)
@@ -817,19 +897,40 @@ func setup_terrain() -> void:
 	add_child(terrain_layer)
 
 
+var _atlas_oleaje_fases: Array[Image] = []
+
+
 func _copiar_atlas(imagen: Image, indice: int) -> void:
 	imagen_oleaje.blit_rect(imagen, Rect2i(0, 0, TILE_SIZE, TILE_SIZE), Vector2i(indice * TILE_SIZE, 0))
 
 
+func _precalcular_atlas_oleaje() -> void:
+	_atlas_oleaje_fases.clear()
+	for fase in range(12):
+		var mar := mar_frames[floori(float(fase) * 6.0 / 12.0)]
+		_copiar_atlas(mar, ATLAS_AGUA)
+		_copiar_atlas(mar, ATLAS_AGUA + 1)
+		for direccion in range(4):
+			_copiar_atlas(orillas_rectas[direccion], ATLAS_ORILLA + direccion)
+			_copiar_atlas(orillas_esquina[direccion], ATLAS_ORILLA_ESQUINA + direccion)
+		_atlas_oleaje_fases.append(imagen_oleaje.duplicate() as Image)
+	# Restaurar fase 0 en la imagen base.
+	imagen_oleaje = (_atlas_oleaje_fases[0].duplicate() as Image)
+
+
 func _actualizar_atlas_oleaje(fase: int) -> void:
-	# 12 pasos comunes: seis cuadros de mar y cuatro de orilla.
-	var mar := mar_frames[floori(float(fase) * 6.0 / 12.0)]
-	_copiar_atlas(mar, ATLAS_AGUA)
-	_copiar_atlas(mar, ATLAS_AGUA + 1)
-	for direccion in range(4):
-		_copiar_atlas(orillas_rectas[direccion], ATLAS_ORILLA + direccion)
-		_copiar_atlas(orillas_esquina[direccion], ATLAS_ORILLA_ESQUINA + direccion)
-	if atlas_oleaje != null:
+	if atlas_oleaje == null:
+		return
+	if _atlas_oleaje_fases.size() == 12:
+		atlas_oleaje.update(_atlas_oleaje_fases[fase])
+	else:
+		# Respaldo: comportamiento anterior.
+		var mar := mar_frames[floori(float(fase) * 6.0 / 12.0)]
+		_copiar_atlas(mar, ATLAS_AGUA)
+		_copiar_atlas(mar, ATLAS_AGUA + 1)
+		for direccion in range(4):
+			_copiar_atlas(orillas_rectas[direccion], ATLAS_ORILLA + direccion)
+			_copiar_atlas(orillas_esquina[direccion], ATLAS_ORILLA_ESQUINA + direccion)
 		atlas_oleaje.update(imagen_oleaje)
 
 
@@ -844,47 +945,56 @@ func _process(delta: float) -> void:
 	if world_camera != null:
 		_actualizar_viento(delta)
 		temporizador_visibilidad += delta
-		if temporizador_visibilidad >= 0.2:
+		if temporizador_visibilidad >= 0.25:
 			temporizador_visibilidad = 0.0
 			var centro := world_camera.get_screen_center_position()
-			var mitad := get_viewport_rect().size / world_camera.zoom / 2.0 + Vector2(160, 160)
-			if centro.distance_squared_to(posicion_revision_animaciones) >= 256.0 or mitad != tamano_revision_animaciones:
+			var mitad := get_viewport_rect().size / world_camera.zoom / 2.0 + Vector2(192, 192)
+			if centro.distance_squared_to(posicion_revision_animaciones) >= 1024.0 or mitad != tamano_revision_animaciones:
 				_actualizar_animaciones_visibles()
 
 
 
 func _atlas_para_terreno(x: int, y: int, tipo: int) -> int:
-	var variedad := posmod(hash(Vector3i(x, y, world_seed)), 1000)
-	var vecinos := []
-	if tipo == SAND or tipo == GRASS:
-		for direccion: Vector2i in TilesNaturaleza.DIRECCIONES:
-			vecinos.append(_terreno_visual(x + direccion.x, y + direccion.y))
 	if tipo == SAND:
-		var agua: Array[int] = []
-		for i in range(4):
-			if vecinos[i] == WATER or vecinos[i] == DEEP_WATER:
-				agua.append(i)
-		# Una costa recta y otra en esquina cubren todos los bordes posibles
-		# sin superponer una isla de arena sobre el mar.
-		if agua.size() == 1:
-			return ATLAS_ORILLA + agua[0]
-		if agua.size() == 2:
-			var par := TilesNaturaleza.indice_par(vecinos, [WATER, DEEP_WATER])
-			if par >= 0:
-				return ATLAS_ORILLA_ESQUINA + posmod(par - 3, 4)
+		var v0 := _terreno_visual(x + 1, y)
+		var v1 := _terreno_visual(x, y + 1)
+		var v2 := _terreno_visual(x - 1, y)
+		var v3 := _terreno_visual(x, y - 1)
+		var a0 := v0 == WATER or v0 == DEEP_WATER
+		var a1 := v1 == WATER or v1 == DEEP_WATER
+		var a2 := v2 == WATER or v2 == DEEP_WATER
+		var a3 := v3 == WATER or v3 == DEEP_WATER
+		var ca := int(a0) + int(a1) + int(a2) + int(a3)
+		if ca == 1:
+			if a0: return ATLAS_ORILLA
+			if a1: return ATLAS_ORILLA + 1
+			if a2: return ATLAS_ORILLA + 2
+			return ATLAS_ORILLA + 3
+		if ca == 2:
+			if a0 and a1: return ATLAS_ORILLA_ESQUINA + 1
+			if a1 and a2: return ATLAS_ORILLA_ESQUINA + 2
+			if a2 and a3: return ATLAS_ORILLA_ESQUINA + 3
+			if a3 and a0: return ATLAS_ORILLA_ESQUINA
+		var variedad := posmod(hash(Vector3i(x, y, world_seed)), 1000)
 		return ATLAS_ARENA + variedad % 2
 	if tipo == GRASS:
-		var arena: Array[int] = []
-		for i in range(4):
-			if vecinos[i] == SAND:
-				arena.append(i)
+		var s0 := _terreno_visual(x + 1, y) == SAND
+		var s1 := _terreno_visual(x, y + 1) == SAND
+		var s2 := _terreno_visual(x - 1, y) == SAND
+		var s3 := _terreno_visual(x, y - 1) == SAND
+		var cs := int(s0) + int(s1) + int(s2) + int(s3)
+		var variedad := posmod(hash(Vector3i(x, y, world_seed)), 1000)
 		var indice := ATLAS_TRANSICION + (variedad % 3) * 8
-		if arena.size() == 1:
-			return indice + arena[0]
-		if arena.size() >= 2:
-			var par := TilesNaturaleza.indice_par(vecinos, [SAND])
-			if par >= 0:
-				return indice + 4 + par
+		if cs == 1:
+			if s0: return indice
+			if s1: return indice + 1
+			if s2: return indice + 2
+			return indice + 3
+		if cs >= 2:
+			if s0 and s1: return indice + 4
+			if s1 and s2: return indice + 5
+			if s2 and s3: return indice + 6
+			if s3 and s0: return indice + 7
 		return ATLAS_PASTO + variedad % 3
 	if tipo == DIRT:
 		return ATLAS_TIERRA
