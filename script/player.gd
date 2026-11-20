@@ -254,7 +254,9 @@ func _actualizar_reposo(delta: float, direccion: Vector2, nadando: bool) -> void
 	espera_reposo = randf_range(3.0, 7.0)
 
 
-func _terminar_reposo(nombre: StringName) -> void:
+func _terminar_reposo(nombre: StringName = &"") -> void:
+	if nombre == &"":
+		nombre = StringName(sprite.animation)
 	if nombre != sprite.animation:
 		return
 	if String(nombre).begins_with("hit_"):
