@@ -7,6 +7,7 @@ const RUTA_MUSLITOS := "res://assets/Jugador/muslitos_estados.png"
 const TEX_FONDO_PAUSA := preload("res://recursos_interfaz/fondos/fondo_interfaz_inicio.jpeg")
 const TEX_BOTON_VOLVER := preload("res://recursos_interfaz/botones/boton_volver.png")
 const TEX_BOTON_GUARDAR_SALIR := preload("res://recursos_interfaz/botones/guardar_salir.png")
+const TEX_BOTONES_GROUP := preload("res://recursos_interfaz/botones/botones_group.png")
 
 # Coordenadas de recorte corregidas (determinadas por inspección de contenido visible):
 # corazones_estados.png (1080x359): 3 estados en segmentos horizontales separados.
@@ -381,7 +382,6 @@ func _construir_menu_pausa(root: Control) -> void:
 	panel_pausa_principal.add_theme_constant_override("separation", 12)
 	contenido.add_child(panel_pausa_principal)
 
-	const TEX_BOTONES_GROUP := preload("res://recursos_interfaz/botones/botones_group.png")
 	var tam_boton_pausa := Vector2(280, 95)
 	var btn_volver := _crear_texture_button(
 		TEX_BOTON_VOLVER,
