@@ -14,6 +14,8 @@ func _ready() -> void:
 	musica.value_changed.connect(_cambiar_musica)
 	sonidos.value_changed.connect(_cambiar_sonidos)
 	$Centro/Contenido/Volver.pressed.connect(_volver)
+	if has_node("/root/GestorAudio"):
+		get_node("/root/GestorAudio").conectar_botones(self)
 
 
 func _cambiar_musica(valor: float) -> void:

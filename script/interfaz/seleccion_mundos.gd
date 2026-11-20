@@ -56,6 +56,8 @@ func _ready() -> void:
 	contenido.add_child(volver)
 	mundos = GestorMundos.listar_mundos()
 	_actualizar_lista()
+	if has_node("/root/GestorAudio"):
+		get_node("/root/GestorAudio").conectar_botones(self)
 
 
 func _actualizar_lista() -> void:
@@ -73,6 +75,8 @@ func _actualizar_lista() -> void:
 		boton.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		boton.tooltip_text = "%s · %s · Semilla: %d · %s" % [mundo.nombre, mundo.dificultad, mundo.semilla, mundo.get("fecha_creacion", "").replace("T", " ")]
 		boton.pressed.connect(_jugar.bind(mundo))
+		if has_node("/root/GestorAudio"):
+			get_node("/root/GestorAudio").conectar_botones(boton)
 		lista.add_child(boton)
 		var texto := Label.new()
 		texto.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

@@ -47,6 +47,8 @@ func _ready() -> void:
 	var crear := Estilo.boton_crear()
 	crear.pressed.connect(_crear)
 	acciones.add_child(crear)
+	if has_node("/root/GestorAudio"):
+		get_node("/root/GestorAudio").conectar_botones(self)
 
 
 func _agregar_etiqueta(contenido: VBoxContainer, texto: String) -> void:

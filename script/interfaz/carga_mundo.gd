@@ -142,4 +142,6 @@ func _mostrar_error(texto: String) -> void:
 	volver.text = "Volver a selección"
 	volver.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	volver.pressed.connect(func(): get_tree().change_scene_to_file("res://escenas/interfaz/seleccion_mundos.tscn"))
+	if has_node("/root/GestorAudio"):
+		get_node("/root/GestorAudio").conectar_botones(volver)
 	capa_carga.add_child(volver)

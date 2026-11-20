@@ -414,13 +414,18 @@ func _asegurar_animaciones_nado() -> void:
 		var tex := _cargar_textura(defs[anim_name])
 		if tex == null:
 			continue
+		var frame_w := 180
+		var frame_h := 360
+		if tex.get_width() >= 2172 and tex.get_height() >= 720:
+			frame_w = int(tex.get_width() / 6)
+			frame_h = tex.get_height()
 		sf.add_animation(anim_name)
 		sf.set_animation_loop(anim_name, true)
 		sf.set_animation_speed(anim_name, 7.0)
 		for i in range(6):
 			var at := AtlasTexture.new()
 			at.atlas = tex
-			at.region = Rect2(i * 180, 0, 180, 360)
+			at.region = Rect2(i * frame_w, 0, frame_w, frame_h)
 			sf.add_frame(anim_name, at)
 
 

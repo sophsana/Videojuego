@@ -5,6 +5,8 @@ func _ready() -> void:
 	$Centro/Contenido/Jugar.pressed.connect(_jugar)
 	$Centro/Contenido/Opciones.pressed.connect(_opciones)
 	$Centro/Contenido/Salir.pressed.connect(_salir)
+	if has_node("/root/GestorAudio"):
+		get_node("/root/GestorAudio").conectar_botones(self)
 
 
 func _jugar() -> void:

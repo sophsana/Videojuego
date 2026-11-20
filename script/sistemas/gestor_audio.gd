@@ -11,6 +11,7 @@ var musica_interfaz: AudioStream
 var sfx_caminata_cesped: AudioStream
 var sfx_golpe_arbol: AudioStream
 var sfx_golpe_roca: AudioStream
+var sfx_click_ui: AudioStream
 
 
 func _ready() -> void:
@@ -85,6 +86,29 @@ func _cargar_streams() -> void:
 	sfx_caminata_cesped = _cargar_stream("res://assets/sonidos/caminata_cesped.mp3", true)
 	sfx_golpe_arbol = _cargar_stream("res://assets/sonidos/golpear_arbol.mp3", false)
 	sfx_golpe_roca = _cargar_stream("res://assets/sonidos/golpear_roca.mp3", false)
+	sfx_click_ui = _crear_click_ui()
+
+
+func _crear_click_ui() -> AudioStream:
+	# Sonido corto de clic de interfaz generado en memoria.
+	var sample_rate := 22050
+	var duracion := 0.045
+	var frames := int(sample_rate * duracion)
+	var data := PackedByteArray()
+	data.resize(frames * 2)
+	for i in range(frames):
+		var t := float(i) / sample_rate
+		var env := 1.0 - float(i) / float(frames)
+		var onda := sin(TAU * 900.0 * t) * 0.35 + sin(TAU * 1800.0 * t) * 0.15
+		var muestra := clampi(int(onda * env * 18000.0), -32768, 32767)
+		data[i * 2] = muestra & 0xFF
+		data[i * 2 + 1] = (muestra >> 8) & 0xFF
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = sample_rate
+	wav.stereo = false
+	wav.data = data
+	return wav
 
 
 func _cargar_stream(ruta: String, bucle: bool) -> AudioStream:
@@ -174,6 +198,19 @@ func reproducir_golpe_arbol() -> void:
 
 func reproducir_golpe_roca() -> void:
 	reproducir_sonido(sfx_golpe_roca)
+
+
+func reproducir_click_ui() -> void:
+	reproducir_sonido(sfx_click_ui, -4.0)
+
+
+func conectar_botones(nodo: Node) -> void:
+	if nodo == null:
+		return
+	if (nodo is BaseButton) and not nodo.pressed.is_connected(reproducir_click_ui):
+		nodo.pressed.connect(reproducir_click_ui)
+	for child in nodo.get_children():
+		conectar_botones(child)
 
 
 func stream_caminata_cesped() -> AudioStream:

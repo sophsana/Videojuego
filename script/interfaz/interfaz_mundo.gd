@@ -4,6 +4,9 @@ const SLOTS := 10
 const TEX_CORAZONES := preload("res://assets/Jugador/corazones_estados.png")
 const TEX_SLOTS := preload("res://assets/Jugador/slot_inventario.png")
 const RUTA_MUSLITOS := "res://assets/Jugador/muslitos_estados.png"
+const TEX_FONDO_PAUSA := preload("res://recursos_interfaz/fondos/fondo_interfaz_inicio.jpeg")
+const TEX_BOTON_VOLVER := preload("res://recursos_interfaz/botones/boton_volver.png")
+const TEX_BOTON_GUARDAR_SALIR := preload("res://recursos_interfaz/botones/guardar_salir.png")
 
 # Coordenadas de recorte corregidas (determinadas por inspección de contenido visible):
 # corazones_estados.png (1080x359): 3 estados en segmentos horizontales separados.
@@ -22,7 +25,6 @@ const REGION_SLOT_SELECCIONADO := Rect2i(599, 50, 426, 405)
 const TAMANO_CORAZON := Vector2(24, 24)
 const TAMANO_SLOT := Vector2(48, 48)
 
-var boton: Button
 var mensaje: Label
 var etiqueta_inventario: Label
 var contenedor_corazones: HBoxContainer
@@ -47,6 +49,14 @@ var tex_slot_seleccionado: AtlasTexture
 var mundo: Node
 var inventario
 var jugador
+
+# Pausa
+var en_pausa := false
+var capa_pausa: Control
+var panel_pausa_principal: VBoxContainer
+var panel_pausa_opciones: VBoxContainer
+var slider_musica_pausa: HSlider
+var slider_sonidos_pausa: HSlider
 
 
 func _ready() -> void:
@@ -117,6 +127,21 @@ func _configurar_texturerect(tr: TextureRect, tam: Vector2) -> void:
 	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+
+func _crear_texture_button(atlas: Texture2D, normal_r: Rect2, hover_r: Rect2, pressed_r: Rect2, tam: Vector2) -> TextureButton:
+	var btn := TextureButton.new()
+	var n := AtlasTexture.new(); n.atlas = atlas; n.region = normal_r
+	var h := AtlasTexture.new(); h.atlas = atlas; h.region = hover_r
+	var p := AtlasTexture.new(); p.atlas = atlas; p.region = pressed_r
+	btn.texture_normal = n
+	btn.texture_hover = h
+	btn.texture_pressed = p
+	btn.ignore_texture_size = true
+	btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	btn.custom_minimum_size = tam
+	btn.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	return btn
 
 
 func _construir_ui() -> void:
@@ -283,28 +308,151 @@ func _construir_ui() -> void:
 	# los corazones queden sobre la mitad izquierda y el hambre sobre la derecha.
 	top_row.custom_minimum_size = Vector2(contenedor_slots.get_combined_minimum_size().x, 0)
 
-	# Guardar y salir + mensajes (no forma parte del HUD de supervivencia).
+	# Mensajes HUD (no forma parte del HUD de supervivencia).
 	var margen := MarginContainer.new()
 	margen.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	margen.offset_left = -300
 	margen.offset_bottom = 120
 	margen.add_theme_constant_override("margin_top", 12)
 	margen.add_theme_constant_override("margin_right", 12)
+	margen.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(margen)
 	var contenido := VBoxContainer.new()
+	contenido.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margen.add_child(contenido)
-	boton = Button.new()
-	boton.name = "GuardarYSalir"
-	boton.text = "Guardar y salir"
-	boton.pressed.connect(_guardar_y_salir)
-	contenido.add_child(boton)
 	mensaje = Label.new()
 	mensaje.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	mensaje.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	contenido.add_child(mensaje)
 	etiqueta_inventario = Label.new()
 	etiqueta_inventario.name = "Inventario"
 	etiqueta_inventario.visible = false
+	etiqueta_inventario.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	contenido.add_child(etiqueta_inventario)
+
+	_construir_menu_pausa(root)
+
+
+func _construir_menu_pausa(root: Control) -> void:
+	capa_pausa = Control.new()
+	capa_pausa.name = "CapaPausa"
+	capa_pausa.set_anchors_preset(Control.PRESET_FULL_RECT)
+	capa_pausa.visible = false
+	capa_pausa.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.add_child(capa_pausa)
+
+	var fondo := TextureRect.new()
+	fondo.texture = TEX_FONDO_PAUSA
+	fondo.set_anchors_preset(Control.PRESET_FULL_RECT)
+	fondo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	fondo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	fondo.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	fondo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	capa_pausa.add_child(fondo)
+
+	var velo := ColorRect.new()
+	velo.color = Color(0, 0, 0, 0.25)
+	velo.set_anchors_preset(Control.PRESET_FULL_RECT)
+	velo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	capa_pausa.add_child(velo)
+
+	var centro := CenterContainer.new()
+	centro.set_anchors_preset(Control.PRESET_FULL_RECT)
+	centro.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	capa_pausa.add_child(centro)
+
+	var contenido := VBoxContainer.new()
+	contenido.alignment = BoxContainer.ALIGNMENT_CENTER
+	contenido.add_theme_constant_override("separation", 14)
+	contenido.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	centro.add_child(contenido)
+
+	var titulo := Label.new()
+	titulo.text = "PAUSA"
+	titulo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	titulo.add_theme_font_size_override("font_size", 38)
+	titulo.add_theme_color_override("font_color", Color(1, 1, 1))
+	titulo.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	titulo.add_theme_constant_override("outline_size", 4)
+	contenido.add_child(titulo)
+
+	panel_pausa_principal = VBoxContainer.new()
+	panel_pausa_principal.alignment = BoxContainer.ALIGNMENT_CENTER
+	panel_pausa_principal.add_theme_constant_override("separation", 12)
+	contenido.add_child(panel_pausa_principal)
+
+	var btn_volver := _crear_texture_button(
+		TEX_BOTON_VOLVER,
+		Rect2(0, 115, 360, 115), Rect2(360, 115, 360, 115), Rect2(720, 115, 360, 115),
+		Vector2(260, 80)
+	)
+	btn_volver.pressed.connect(_reanudar)
+	panel_pausa_principal.add_child(btn_volver)
+
+	var btn_guardar := _crear_texture_button(
+		TEX_BOTON_GUARDAR_SALIR,
+		Rect2(20, 250, 690, 200), Rect2(744, 250, 690, 200), Rect2(1468, 250, 690, 200),
+		Vector2(260, 80)
+	)
+	btn_guardar.pressed.connect(_guardar_y_salir_desde_pausa)
+	panel_pausa_principal.add_child(btn_guardar)
+
+	var btn_opciones := Button.new()
+	btn_opciones.text = "Opciones"
+	btn_opciones.custom_minimum_size = Vector2(220, 48)
+	btn_opciones.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	btn_opciones.pressed.connect(_mostrar_opciones_pausa)
+	panel_pausa_principal.add_child(btn_opciones)
+
+	panel_pausa_opciones = VBoxContainer.new()
+	panel_pausa_opciones.visible = false
+	panel_pausa_opciones.alignment = BoxContainer.ALIGNMENT_CENTER
+	panel_pausa_opciones.add_theme_constant_override("separation", 10)
+	panel_pausa_opciones.custom_minimum_size = Vector2(320, 0)
+	contenido.add_child(panel_pausa_opciones)
+
+	var titulo_op := Label.new()
+	titulo_op.text = "OPCIONES"
+	titulo_op.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	titulo_op.add_theme_font_size_override("font_size", 28)
+	panel_pausa_opciones.add_child(titulo_op)
+
+	var lbl_m := Label.new()
+	lbl_m.text = "Música"
+	panel_pausa_opciones.add_child(lbl_m)
+	slider_musica_pausa = HSlider.new()
+	slider_musica_pausa.min_value = 0.0
+	slider_musica_pausa.max_value = 1.0
+	slider_musica_pausa.step = 0.01
+	slider_musica_pausa.custom_minimum_size = Vector2(0, 32)
+	slider_musica_pausa.value_changed.connect(_cambiar_musica_pausa)
+	panel_pausa_opciones.add_child(slider_musica_pausa)
+
+	var lbl_s := Label.new()
+	lbl_s.text = "Sonidos"
+	panel_pausa_opciones.add_child(lbl_s)
+	slider_sonidos_pausa = HSlider.new()
+	slider_sonidos_pausa.min_value = 0.0
+	slider_sonidos_pausa.max_value = 1.0
+	slider_sonidos_pausa.step = 0.01
+	slider_sonidos_pausa.custom_minimum_size = Vector2(0, 32)
+	slider_sonidos_pausa.value_changed.connect(_cambiar_sonidos_pausa)
+	panel_pausa_opciones.add_child(slider_sonidos_pausa)
+
+	var btn_volver_op := Button.new()
+	btn_volver_op.text = "Volver"
+	btn_volver_op.custom_minimum_size = Vector2(160, 40)
+	btn_volver_op.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	btn_volver_op.pressed.connect(_ocultar_opciones_pausa)
+	panel_pausa_opciones.add_child(btn_volver_op)
+
+	# Sonidos en botones del menú de pausa (no en sliders de sonido/música).
+	if has_node("/root/GestorAudio"):
+		var ga = get_node("/root/GestorAudio")
+		ga.conectar_botones(btn_volver)
+		ga.conectar_botones(btn_guardar)
+		ga.conectar_botones(btn_opciones)
+		ga.conectar_botones(btn_volver_op)
 
 
 func _conectar() -> void:
@@ -322,6 +470,12 @@ func _conectar() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		_alternar_pausa()
+		get_viewport().set_input_as_handled()
+		return
+	if en_pausa:
+		return
 	if inventario == null or not inventario.has_method("seleccionar"):
 		return
 	if event is InputEventMouseButton and event.pressed:
@@ -347,6 +501,67 @@ func _unhandled_input(event: InputEvent) -> void:
 		if idx >= 0:
 			inventario.seleccionar(idx)
 			get_viewport().set_input_as_handled()
+
+
+func _alternar_pausa() -> void:
+	if en_pausa:
+		_reanudar()
+	else:
+		_pausar()
+
+
+func _pausar() -> void:
+	en_pausa = true
+	_actualizar_sliders_pausa()
+	panel_pausa_principal.visible = true
+	panel_pausa_opciones.visible = false
+	capa_pausa.visible = true
+	get_tree().paused = true
+
+
+func _reanudar() -> void:
+	en_pausa = false
+	capa_pausa.visible = false
+	panel_pausa_opciones.visible = false
+	panel_pausa_principal.visible = true
+	get_tree().paused = false
+
+
+func _mostrar_opciones_pausa() -> void:
+	_actualizar_sliders_pausa()
+	panel_pausa_principal.visible = false
+	panel_pausa_opciones.visible = true
+
+
+func _ocultar_opciones_pausa() -> void:
+	panel_pausa_opciones.visible = false
+	panel_pausa_principal.visible = true
+
+
+func _actualizar_sliders_pausa() -> void:
+	if slider_musica_pausa == null or slider_sonidos_pausa == null:
+		return
+	if has_node("/root/GestorAudio"):
+		var ga = get_node("/root/GestorAudio")
+		slider_musica_pausa.set_value_no_signal(float(ga.volumen_musica))
+		slider_sonidos_pausa.set_value_no_signal(float(ga.volumen_sonidos))
+	else:
+		slider_musica_pausa.set_value_no_signal(1.0)
+		slider_sonidos_pausa.set_value_no_signal(1.0)
+
+
+func _cambiar_musica_pausa(valor: float) -> void:
+	if has_node("/root/GestorAudio"):
+		get_node("/root/GestorAudio").establecer_volumen_musica(valor)
+
+
+func _cambiar_sonidos_pausa(valor: float) -> void:
+	if has_node("/root/GestorAudio"):
+		get_node("/root/GestorAudio").establecer_volumen_sonidos(valor)
+
+
+func _guardar_y_salir_desde_pausa() -> void:
+	_guardar_y_salir()
 
 
 func _actualizar_todo() -> void:
@@ -459,7 +674,6 @@ func _guardar_y_salir() -> void:
 		return
 	p.set_physics_process(false)
 	p.velocity = Vector2.ZERO
-	boton.disabled = true
 	var vida_val = p.vida if "vida" in p else 20
 	var hambre_val = p.hambre if "hambre" in p else 20
 	var rocas_val = mundo.get("rocas_golpeadas") if mundo != null else {}
@@ -468,10 +682,10 @@ func _guardar_y_salir() -> void:
 	var arboles_talados_val = mundo.get("arboles_talados") if mundo != null else {}
 	var ok := GestorMundos.guardar_progreso(p.position, inventario, mundo.arbustos_recolectados, vida_val, hambre_val, rocas_val, rocas_golpes_val, arboles_golpes_val, arboles_talados_val)
 	if ok:
+		get_tree().paused = false
 		var error := get_tree().change_scene_to_file("res://escenas/interfaz/seleccion_mundos.tscn")
 		if error == OK:
 			return
 		mostrar_mensaje("Guardado correcto, pero no se pudo volver al menú. Reintenta.")
 	else:
 		mostrar_mensaje(GestorMundos.ultimo_error + " Reintenta.")
-	boton.disabled = false
