@@ -113,9 +113,7 @@ func _normalizar_slot(indice: int, valor) -> void:
 
 
 func espacio_para(id: String, max_pila: int = MAX_PILA) -> int:
-	if not (max_pila is int or max_pila is float):
-		max_pila = MAX_PILA
-	max_pila = clampi(int(max_pila), 1, MAX_PILA)
+	max_pila = clampi(max_pila, 1, MAX_PILA)
 	var espacio := 0
 	for slot in slots:
 		if slot != null and String(slot.get("id", "")) == id:
@@ -135,10 +133,10 @@ func puede_agregar(id: String, cantidad: int, max_pila: int = MAX_PILA) -> bool:
 func agregar_hasta(id: String, nombre: String, cantidad: int, definicion: Dictionary = {}, emitir := true) -> int:
 	if cantidad <= 0:
 		return 0
-	var max_pila = definicion.get("max_pila", MAX_PILA)
-	if not (max_pila is int or max_pila is float):
-		max_pila = MAX_PILA
-	max_pila = clampi(int(max_pila), 1, MAX_PILA)
+	var max_pila_val = definicion.get("max_pila", MAX_PILA)
+	if not (max_pila_val is int or max_pila_val is float):
+		max_pila_val = MAX_PILA
+	var max_pila := clampi(int(max_pila_val), 1, MAX_PILA)
 	var restante := cantidad
 	# Completar pilas existentes del mismo objeto.
 	for i in range(TAMANO):
@@ -184,10 +182,10 @@ func agregar_hasta(id: String, nombre: String, cantidad: int, definicion: Dictio
 func agregar(id: String, nombre: String, cantidad: int, definicion: Dictionary = {}, emitir := true) -> bool:
 	if cantidad <= 0:
 		return true
-	var max_pila = definicion.get("max_pila", MAX_PILA)
-	if not (max_pila is int or max_pila is float):
-		max_pila = MAX_PILA
-	max_pila = clampi(int(max_pila), 1, MAX_PILA)
+	var max_pila_val = definicion.get("max_pila", MAX_PILA)
+	if not (max_pila_val is int or max_pila_val is float):
+		max_pila_val = MAX_PILA
+	var max_pila := clampi(int(max_pila_val), 1, MAX_PILA)
 	if not puede_agregar(id, cantidad, max_pila):
 		return false
 	return agregar_hasta(id, nombre, cantidad, definicion, emitir) == cantidad
