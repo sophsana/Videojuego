@@ -333,16 +333,25 @@ func _actualizar_animacion(direccion: Vector2, nadando: bool, corriendo: bool) -
 	sprite.flip_h = ultima_direccion == "right"
 
 	# Escala y alineación de pies/base. En agua el personaje se hunde para cubrir las botas.
+	# Algunas animaciones (golpe, nado_atras) usan frames de mayor tamaño (362x724) y requieren escala reducida.
+	var factor_frame := 1.0
+	if sprite.sprite_frames != null and sprite.sprite_frames.has_animation(animacion) and sprite.sprite_frames.get_frame_count(animacion) > 0:
+		var tex_ref = sprite.sprite_frames.get_frame_texture(animacion, 0)
+		if tex_ref != null:
+			var sz := tex_ref.get_size()
+			if sz.y >= 500.0 or sz.x >= 300.0:
+				factor_frame = 0.5
 	var base_y := 0.0
 	if animacion_golpeando and animacion.begins_with("hit_"):
-		sprite.scale = Vector2(0.2, 0.2)
+		sprite.scale = Vector2(0.2, 0.2) * factor_frame
 		base_y = -7.0
 	elif nadando:
-		sprite.scale = Vector2(0.2, 0.2)
+		sprite.scale = Vector2(0.2, 0.2) * factor_frame
 		var hundimiento := 11.0 if current_terrain == WATER else 12.0
 		base_y = -7.0 + hundimiento
 	else:
-		sprite.scale = Vector2(0.133333, 0.133333) if animacion in ["idle_left", "idle_right"] else Vector2(0.2, 0.2)
+		var escala_base := Vector2(0.133333, 0.133333) if animacion in ["idle_left", "idle_right"] else Vector2(0.2, 0.2)
+		sprite.scale = escala_base * factor_frame
 		base_y = -3.2 if animacion in ["idle_left", "idle_right"] else -7.0
 	sprite.position = Vector2(offset_golpe.x, base_y + offset_golpe.y)
 
@@ -358,9 +367,13 @@ func _actualizar_animacion(direccion: Vector2, nadando: bool, corriendo: bool) -
 
 	if sprite.animation != animacion:
 		sprite.animation = animacion
-	if animacion_golpeando and animacion.begins_with("hit_"):
-		if not sprite.is_playing():
+		if animacion_golpeando and animacion.begins_with("hit_"):
+			sprite.frame = 0
 			sprite.play(animacion)
+
+	if animacion_golpeando and animacion.begins_with("hit_"):
+		# No reiniciar: animation_finished limpia el estado al terminar.
+		pass
 	elif moviendose:
 		if not sprite.is_playing() or sprite.animation != animacion:
 			sprite.play(animacion)
@@ -438,13 +451,13 @@ func _asegurar_animaciones_golpe() -> void:
 	var tex := _cargar_textura("res://assets/Jugador/golpear.png")
 	if tex == null:
 		return
-	# Sprite sheet horizontal de 6 fotogramas (2172x724).
+	# Sprite sheet horizontal de 6 fotogramas (2172x724). Duración breve (~0.5s).
 	for anim_name in ["hit_down", "hit_up", "hit_left", "hit_right"]:
 		if sf.has_animation(anim_name):
 			continue
 		sf.add_animation(anim_name)
 		sf.set_animation_loop(anim_name, false)
-		sf.set_animation_speed(anim_name, 14.0)
+		sf.set_animation_speed(anim_name, 12.0)
 		for i in range(6):
 			var at := AtlasTexture.new()
 			at.atlas = tex

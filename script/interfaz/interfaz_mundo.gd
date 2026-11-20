@@ -381,6 +381,7 @@ func _construir_menu_pausa(root: Control) -> void:
 	panel_pausa_principal.add_theme_constant_override("separation", 12)
 	contenido.add_child(panel_pausa_principal)
 
+	const TEX_BOTONES_GROUP := preload("res://recursos_interfaz/botones/botones_group.png")
 	var btn_volver := _crear_texture_button(
 		TEX_BOTON_VOLVER,
 		Rect2(0, 115, 360, 115), Rect2(360, 115, 360, 115), Rect2(720, 115, 360, 115),
@@ -389,18 +390,20 @@ func _construir_menu_pausa(root: Control) -> void:
 	btn_volver.pressed.connect(_reanudar)
 	panel_pausa_principal.add_child(btn_volver)
 
+	# guardar_salir.png: 2172x724, 3 estados (normal/hover/pressed) con contenido visible centrado.
 	var btn_guardar := _crear_texture_button(
 		TEX_BOTON_GUARDAR_SALIR,
-		Rect2(20, 250, 690, 200), Rect2(744, 250, 690, 200), Rect2(1468, 250, 690, 200),
+		Rect2(30, 258, 664, 188), Rect2(754, 258, 664, 188), Rect2(1478, 258, 664, 188),
 		Vector2(260, 80)
 	)
 	btn_guardar.pressed.connect(_guardar_y_salir_desde_pausa)
 	panel_pausa_principal.add_child(btn_guardar)
 
-	var btn_opciones := Button.new()
-	btn_opciones.text = "Opciones"
-	btn_opciones.custom_minimum_size = Vector2(220, 48)
-	btn_opciones.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var btn_opciones := _crear_texture_button(
+		TEX_BOTONES_GROUP,
+		Rect2(360, 109, 360, 137), Rect2(360, 299, 360, 137), Rect2(360, 489, 360, 137),
+		Vector2(260, 80)
+	)
 	btn_opciones.pressed.connect(_mostrar_opciones_pausa)
 	panel_pausa_principal.add_child(btn_opciones)
 
@@ -439,10 +442,11 @@ func _construir_menu_pausa(root: Control) -> void:
 	slider_sonidos_pausa.value_changed.connect(_cambiar_sonidos_pausa)
 	panel_pausa_opciones.add_child(slider_sonidos_pausa)
 
-	var btn_volver_op := Button.new()
-	btn_volver_op.text = "Volver"
-	btn_volver_op.custom_minimum_size = Vector2(160, 40)
-	btn_volver_op.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var btn_volver_op := _crear_texture_button(
+		TEX_BOTON_VOLVER,
+		Rect2(0, 115, 360, 115), Rect2(360, 115, 360, 115), Rect2(720, 115, 360, 115),
+		Vector2(220, 70)
+	)
 	btn_volver_op.pressed.connect(_ocultar_opciones_pausa)
 	panel_pausa_opciones.add_child(btn_volver_op)
 

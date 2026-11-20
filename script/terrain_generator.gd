@@ -1148,7 +1148,7 @@ func _calcular_terreno(x: int, y: int) -> int:
 	if elevation < -0.04:
 		return SAND
 	if elevation > 0.48:
-		return DIRT
+		return GRASS
 	if moisture < -0.35:
 		return DIRT
 
@@ -1430,7 +1430,7 @@ func _atlas_para_terreno(x: int, y: int, tipo: int) -> int:
 	if tipo == DIRT:
 		return ATLAS_TIERRA
 	if tipo == ROCK:
-		return ATLAS_TIERRA
+		return ATLAS_PASTO + (posmod(hash(Vector3i(x, y, world_seed)), 1000) % 3)
 	return ATLAS_AGUA + tipo
 
 
